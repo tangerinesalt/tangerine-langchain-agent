@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling>=1.26.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "langchain-code-agent"
+version = "0.1.0"
+description = "A local, testable, and debuggable code engineering agent built with LangChain."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Codex" }]
+dependencies = [
+  "langchain>=0.3.0",
+  "langchain-openai>=0.3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.12.0",
+  "pytest>=8.3.0",
+  "ruff>=0.8.0",
+]
+
+[project.scripts]
+lc-agent = "langchain_code_agent.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/langchain_code_agent"]

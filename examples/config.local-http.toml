@@ -1,0 +1,22 @@
+workspace_root = "C:/Users/tangerine/.langchain-code-agent"
+planner_backend = "langchain"
+
+model_backend = "langchain"
+model_provider = "openai"
+model = "qwen/qwen3.5-9b"
+model_base_url = "http://localhost:1234/v1"
+model_api_key = "1997"
+model_timeout_seconds = 60
+
+shell_timeout_seconds = 30
+test_command = "python -m pytest -q"
+allowed_shell_commands = ["python", "pytest", "rg", "git"]
+
+ignore_patterns = [
+  ".git",
+  ".venv",
+  "__pycache__",
+  ".pytest_cache",
+  ".mypy_cache",
+  "node_modules",
+]
