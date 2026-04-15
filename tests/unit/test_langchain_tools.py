@@ -2,7 +2,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from langchain_code_agent.config import AgentConfig
-from langchain_code_agent.tools.langchain_tools import build_langchain_tools, build_tool_context
+from langchain_code_agent.tools.langchain_tools import (
+    LANGCHAIN_TOOL_SPECS,
+    build_langchain_tools,
+    build_tool_context,
+)
 
 
 def test_langchain_tools_use_runtime_context_and_hide_runtime_arg(tmp_path: Path) -> None:
@@ -120,3 +124,9 @@ def test_langchain_tools_can_run_tests_with_runtime_context(tmp_path: Path) -> N
 
     assert result["ok"] is True
     assert "1 passed" in result["data"]["stdout"]
+
+
+def test_langchain_tools_are_built_from_declared_specs() -> None:
+    tools = build_langchain_tools()
+
+    assert [tool.name for tool in tools] == [spec.name for spec in LANGCHAIN_TOOL_SPECS]

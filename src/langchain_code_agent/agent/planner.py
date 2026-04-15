@@ -1,47 +1,33 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Protocol
 from urllib.parse import urlparse
 
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from langchain_code_agent.actions import action_argument_schemas_text, action_names_csv
 from langchain_code_agent.config import AgentConfig
 from langchain_code_agent.agent.plan_output_normalizer import normalize_plan_output
+from langchain_code_agent.agent.plan_validator import validate_plan
 from langchain_code_agent.llm.factory import build_chat_model
 from langchain_code_agent.models.plan import Plan, PlanStep
 from langchain_code_agent.models.task import Task
 
-PLANNER_SYSTEM_PROMPT = """
-You are the planning model for a local code engineering agent.
-You are not a general chat assistant. Your job is to produce a short, directly executable plan
-for the agent.
+PLANNER_ACTIONS = action_names_csv()
+PLANNER_ACTION_SCHEMAS = action_argument_schemas_text()
+PROMPT_PATH = Path(__file__).resolve().parents[1] / "llm" / "prompts" / "planner.txt"
 
-Requirements:
-- Stay within the provided workspace.
-- Only use these actions: get_current_date, glob_files, find_files_by_name, tree_view, list_files, read_file,
-  read_file_head, search_text, replace_in_file, insert_text, delete_file, move_file, run_command,
-  run_python_script, run_shell, run_tests, write_file.
-- Use get_current_date when the task depends on the current date, time, or relative date phrases.
-- Prefer reading or searching files before running shell commands.
-- Use run_python_script for multiline Python logic.
-- Use run_command when argv-based execution is clearer than a shell string.
-- Use run_shell only when simpler actions are insufficient.
-- Use write_file when the task requires creating or updating a text file in the workspace.
-- Keep the plan concise, practical, and low-noise.
-- Use short summaries and short step descriptions.
-- Do not add commentary, motivation, or duplicate steps.
-- do not return only repository inspection steps when the task clearly requires creating, editing,
-  testing, or writing outputs.
-- Think as a code agent: inspect, verify, execute, then write outputs.
-- If the task depends on time, date, "latest", "today", "tomorrow", "next few days", or
-  weather ranges, first anchor the task to an exact current date.
-- If the exact current date is not already given in the task, add an early get_current_date step
-  before planning time-dependent work.
-- When you mention dates in the plan, prefer absolute dates over relative phrases.
-- Do not output pseudocode, placeholders, or speculative steps.
-""".strip()
+
+def _load_planner_system_prompt() -> str:
+    return PROMPT_PATH.read_text(encoding="utf-8").strip().format(
+        planner_actions=PLANNER_ACTIONS
+    )
+
+
+PLANNER_SYSTEM_PROMPT = _load_planner_system_prompt()
 
 
 class Planner(Protocol):
@@ -116,23 +102,27 @@ class LangChainPlanner:
         raw_response = result.get("structured_response")
         if raw_response is None:
             raise ValueError("LangChain planner did not return a structured response.")
-        return normalize_plan_output(
-            raw_response,
-            task=task,
-            config=self.config,
-            response_mode="structured",
+        return validate_plan(
+            normalize_plan_output(
+                raw_response,
+                task=task,
+                config=self.config,
+                response_mode="structured",
+            )
         )
 
     def _create_plan_with_json_fallback(self, task: Task) -> Plan:
         model = build_chat_model(self.config)
         messages = _build_json_fallback_messages(task)
         response = model.invoke(messages)
-        return normalize_plan_output(
-            response,
-            task=task,
-            config=self.config,
-            response_mode="json_text",
-            retry_callback=lambda: model.invoke(messages),
+        return validate_plan(
+            normalize_plan_output(
+                response,
+                task=task,
+                config=self.config,
+                response_mode="json_text",
+                retry_callback=lambda: model.invoke(messages),
+            )
         )
 
 
@@ -180,34 +170,7 @@ def _build_json_fallback_messages(task: Task) -> list[SystemMessage | HumanMessa
                 f"Execution mode: {task.execution_mode}\n"
                 "Return only valid JSON.\n"
                 "Available actions and arguments:\n"
-                '- get_current_date: {}\n'
-                '- glob_files: {"pattern": string required, "limit": integer optional}\n'
-                '- find_files_by_name: {"name": string required, "limit": integer optional}\n'
-                '- tree_view: {"path": string optional, "depth": integer optional}\n'
-                '- list_files: {"limit": integer optional}\n'
-                '- read_file: {"path": string required}\n'
-                '- read_file_head: {"path": string required, '
-                '"start_line": integer optional, "max_lines": integer optional}\n'
-                '- search_text: {"query": string required, '
-                '"max_results": integer optional, "case_sensitive": boolean optional, '
-                '"use_regex": boolean optional, "path_glob": string optional}\n'
-                '- replace_in_file: {"path": string required, '
-                '"old_text": string required, "new_text": string required, '
-                '"count": integer optional}\n'
-                '- insert_text: {"path": string required, "anchor": string required, '
-                '"text": string required, "position": string optional}\n'
-                '- delete_file: {"path": string required}\n'
-                '- move_file: {"source_path": string required, '
-                '"destination_path": string required}\n'
-                '- run_command: {"argv": string array required, '
-                '"working_directory": string optional}\n'
-                '- run_python_script: {"script": string required, '
-                '"working_directory": string optional}\n'
-                '- run_shell: {"command": string required, '
-                '"working_directory": string optional}\n'
-                '- run_tests: {"working_directory": string optional}\n'
-                '- write_file: {"path": string required, "content": string required, '
-                '"overwrite": boolean optional}\n'
+                f"{PLANNER_ACTION_SCHEMAS}\n"
                 "If the goal is to create a new text file, include a write_file step.\n"
                 "If the task depends on the current date or relative dates, include "
                 "get_current_date before time-sensitive work.\n"

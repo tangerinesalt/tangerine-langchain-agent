@@ -141,6 +141,65 @@ def test_runner_execute_can_write_file_step(tmp_path: Path) -> None:
     assert result.final_report.file_changes[0].path == "weather.txt"
 
 
+def test_runner_marks_material_output_task_without_changes_as_incomplete(tmp_path: Path) -> None:
+    config = AgentConfig(
+        workspace_root=tmp_path,
+        planner_backend="noop",
+        shell_timeout_seconds=5,
+        ignore_patterns=[],
+        allowed_shell_commands=["python"],
+    )
+    runner = AgentRunner(config)
+    runner.planner = _StubPlanner(
+        Plan(
+            summary="Inspect only.",
+            steps=[
+                PlanStep(
+                    action="list_files",
+                    description="Inspect the workspace.",
+                    arguments={"limit": 20},
+                )
+            ],
+        )
+    )
+
+    result = runner.run("write notes.txt", execution_mode="execute")
+
+    assert result.step_results[0].ok is True
+    assert result.final_report.success is False
+    assert any(error.error_type == "IncompleteTaskResult" for error in result.final_report.errors)
+    assert any(event.event_type == "completion_validation_failed" for event in result.events)
+
+
+def test_runner_keeps_read_only_task_successful_without_changes(tmp_path: Path) -> None:
+    config = AgentConfig(
+        workspace_root=tmp_path,
+        planner_backend="noop",
+        shell_timeout_seconds=5,
+        ignore_patterns=[],
+        allowed_shell_commands=["python"],
+    )
+    runner = AgentRunner(config)
+    runner.planner = _StubPlanner(
+        Plan(
+            summary="Inspect only.",
+            steps=[
+                PlanStep(
+                    action="list_files",
+                    description="Inspect the workspace.",
+                    arguments={"limit": 20},
+                )
+            ],
+        )
+    )
+
+    result = runner.run("inspect repo", execution_mode="execute")
+
+    assert result.step_results[0].ok is True
+    assert result.final_report.success is True
+    assert not any(error.error_type == "IncompleteTaskResult" for error in result.final_report.errors)
+
+
 def test_runner_rejects_unknown_arguments_for_action(tmp_path: Path) -> None:
     config = AgentConfig(
         workspace_root=tmp_path,
