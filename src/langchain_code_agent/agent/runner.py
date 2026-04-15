@@ -20,6 +20,7 @@ from langchain_code_agent.models.task import Task
 from langchain_code_agent.tools.base import ToolResult
 from langchain_code_agent.tools.delete_file import delete_file_tool
 from langchain_code_agent.tools.find_files_by_name import find_files_by_name_tool
+from langchain_code_agent.tools.get_current_date import get_current_date_tool
 from langchain_code_agent.tools.glob_files import glob_files_tool
 from langchain_code_agent.tools.insert_text import insert_text_tool
 from langchain_code_agent.tools.list_files import list_files_tool
@@ -273,6 +274,12 @@ class AgentRunner:
                     self.repository,
                     limit=_coerce_int(arguments.get("limit"), 200),
                 )
+                return (
+                    tool_result,
+                    _tool_error_context(tool_result, action, arguments, step_index),
+                )
+            if action == "get_current_date":
+                tool_result = get_current_date_tool()
                 return (
                     tool_result,
                     _tool_error_context(tool_result, action, arguments, step_index),
@@ -645,6 +652,7 @@ def _tool_error_context(
 
 def _validate_step_arguments(action: str, arguments: dict[str, object]) -> str | None:
     allowed_arguments = {
+        "get_current_date": set(),
         "glob_files": {"pattern", "limit"},
         "find_files_by_name": {"name", "limit"},
         "tree_view": {"path", "depth"},

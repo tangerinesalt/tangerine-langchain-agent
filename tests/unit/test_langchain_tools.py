@@ -16,6 +16,7 @@ def test_langchain_tools_use_runtime_context_and_hide_runtime_arg(tmp_path: Path
     runtime = SimpleNamespace(context=build_tool_context(config))
     tools = {tool.name: tool for tool in build_langchain_tools()}
 
+    date_result = tools["get_current_date"].func(runtime=runtime)
     list_result = tools["list_files"].func(limit=10, runtime=runtime)
     glob_result = tools["glob_files"].func(pattern="*.py", limit=10, runtime=runtime)
     find_result = tools["find_files_by_name"].func(name="main", limit=10, runtime=runtime)
@@ -80,6 +81,8 @@ def test_langchain_tools_use_runtime_context_and_hide_runtime_arg(tmp_path: Path
     )
 
     assert "runtime" not in tools["run_shell"].args
+    assert date_result["ok"] is True
+    assert "current_date" in date_result["data"]
     assert list_result["ok"] is True
     assert glob_result["data"]["count"] == 1
     assert find_result["data"]["count"] == 1

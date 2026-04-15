@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from langchain_code_agent.config import AgentConfig
 from langchain_code_agent.tools.delete_file import delete_file_tool
 from langchain_code_agent.tools.find_files_by_name import find_files_by_name_tool
+from langchain_code_agent.tools.get_current_date import get_current_date_tool
 from langchain_code_agent.tools.glob_files import glob_files_tool
 from langchain_code_agent.tools.insert_text import insert_text_tool
 from langchain_code_agent.tools.list_files import list_files_tool
@@ -39,6 +40,10 @@ class AgentToolContext:
 
 class ListFilesInput(BaseModel):
     limit: int = Field(default=200, ge=1, le=1000, description="Maximum files to return.")
+
+
+class GetCurrentDateInput(BaseModel):
+    pass
 
 
 class GlobFilesInput(BaseModel):
@@ -149,6 +154,18 @@ class RunPythonScriptInput(BaseModel):
         default=None,
         description="Optional relative directory inside the workspace root.",
     )
+
+
+@tool(
+    "get_current_date",
+    args_schema=GetCurrentDateInput,
+    description="Return the current local date, datetime, timezone, and weekday.",
+)
+def get_current_date_langchain_tool(
+    runtime: ToolRuntime[AgentToolContext] | None = None,
+) -> dict[str, Any]:
+    _get_context(runtime)
+    return _result_payload(get_current_date_tool())
 
 
 @tool(
@@ -462,6 +479,7 @@ def run_python_script_langchain_tool(
 
 def build_langchain_tools() -> list[BaseTool]:
     return [
+        get_current_date_langchain_tool,
         list_files_langchain_tool,
         glob_files_langchain_tool,
         find_files_by_name_langchain_tool,

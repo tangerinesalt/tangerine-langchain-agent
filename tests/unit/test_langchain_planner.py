@@ -186,9 +186,8 @@ def test_langchain_planner_extracts_fenced_json_and_write_file(monkeypatch) -> N
     plan = planner_module.LangChainPlanner(config).create_plan(task)
 
     assert plan.summary == "Write a text file."
-    assert plan.steps[0].action == "run_command"
-    assert plan.steps[1].action == "write_file"
-    assert plan.steps[1].arguments["path"] == "weather.txt"
+    assert [step.action for step in plan.steps] == ["write_file"]
+    assert plan.steps[0].arguments["path"] == "weather.txt"
 
 
 def test_langchain_planner_adds_date_anchor_for_time_sensitive_task(monkeypatch) -> None:
@@ -220,9 +219,8 @@ def test_langchain_planner_adds_date_anchor_for_time_sensitive_task(monkeypatch)
 
     plan = planner_module.LangChainPlanner(config).create_plan(task)
 
-    assert plan.steps[0].action == "run_command"
-    assert plan.steps[0].arguments["argv"][0] == "python"
-    assert "date.today" in plan.steps[0].arguments["argv"][2]
+    assert plan.steps[0].action == "get_current_date"
+    assert plan.steps[0].arguments == {}
     assert plan.steps[1].action == "write_file"
 
 
@@ -369,7 +367,7 @@ def test_langchain_planner_collapses_empty_write_file_into_script_output(monkeyp
 
     plan = planner_module.LangChainPlanner(config).create_plan(task)
 
-    assert [step.action for step in plan.steps] == ["run_command", "run_python_script"]
+    assert [step.action for step in plan.steps] == ["get_current_date", "run_python_script"]
     assert "write_text(_output_text" in str(plan.steps[1].arguments["script"])
     assert "weather_forecast.txt" in str(plan.steps[1].arguments["script"])
 
@@ -383,6 +381,7 @@ def test_planner_system_prompt_guides_identity_time_and_conciseness() -> None:
     assert "absolute dates" in prompt
     assert "replace_in_file" in prompt
     assert "move_file" in prompt
+    assert "get_current_date" in prompt
     assert "run_command" in prompt
     assert "run_python_script" in prompt
     assert "do not return only repository inspection steps" in prompt

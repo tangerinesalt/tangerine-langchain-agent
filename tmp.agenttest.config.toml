@@ -1,5 +1,5 @@
-workspace_root = "C:/Users/tangerine/.langchain-code-agent"
-planner_backend = "noop"
+workspace_root = "C:/Users/tangerine/Desktop/Test/agentTest"
+planner_backend = "langchain"
 
 model_backend = "langchain"
 model_provider = "openai"
@@ -8,7 +8,7 @@ model_base_url = "http://localhost:1234/v1"
 model_api_key = "sk-lm-cgCA7T00:aaSvq1VWIISDxan6Niak"
 model_timeout_seconds = 60
 
-shell_timeout_seconds = 30
+shell_timeout_seconds = 60
 test_command = "python -m pytest -q"
 allowed_shell_commands = ["python", "pytest", "rg", "git"]
 
@@ -18,5 +18,8 @@ ignore_patterns = [
   "__pycache__",
   ".pytest_cache",
   ".mypy_cache",
+  ".ruff_cache",
   "node_modules",
+  "dist",
+  "build",
 ]

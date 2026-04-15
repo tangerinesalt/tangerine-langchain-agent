@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 class PlanStep(BaseModel):
     action: Literal[
+        "get_current_date",
         "glob_files",
         "find_files_by_name",
         "tree_view",

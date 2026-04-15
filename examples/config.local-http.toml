@@ -5,7 +5,7 @@ model_backend = "langchain"
 model_provider = "openai"
 model = "qwen/qwen3.5-9b"
 model_base_url = "http://localhost:1234/v1"
-model_api_key = "1997"
+model_api_key = "sk-lm-cgCA7T00:aaSvq1VWIISDxan6Niak"
 model_timeout_seconds = 60
 
 shell_timeout_seconds = 30

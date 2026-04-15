@@ -228,6 +228,29 @@ def test_runner_execute_supports_phase1_repository_tools(tmp_path: Path) -> None
     assert result.step_results[4].data["count"] == 2
 
 
+def test_runner_execute_supports_get_current_date_tool(tmp_path: Path) -> None:
+    config = AgentConfig(
+        workspace_root=tmp_path,
+        planner_backend="noop",
+        shell_timeout_seconds=5,
+        ignore_patterns=[],
+        allowed_shell_commands=["python"],
+    )
+    runner = AgentRunner(config)
+    runner.planner = _StubPlanner(
+        Plan(
+            summary="Read the current date.",
+            steps=[PlanStep(action="get_current_date", description="Read the date.", arguments={})],
+        )
+    )
+
+    result = runner.run("what is today", execution_mode="execute")
+
+    assert result.step_results[0].ok is True
+    assert "current_date" in result.step_results[0].data
+    assert result.step_results[0].file_changes == []
+
+
 def test_runner_execute_supports_phase2_editing_tools(tmp_path: Path) -> None:
     (tmp_path / "main.py").write_text("alpha\nbeta\n", encoding="utf-8")
     config = AgentConfig(
