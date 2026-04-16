@@ -6,4 +6,6 @@
 .langgraph_api/
 
 # Agent auth files
+auth.json
+*.auth.json
 *.secrets.toml
