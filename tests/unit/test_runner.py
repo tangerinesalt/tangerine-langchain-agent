@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from langchain_code_agent.agent.runner import AgentRunner
-from langchain_code_agent.config import AgentConfig
+from langchain_code_agent.agent_config import AgentConfig
 from langchain_code_agent.models.plan import CompletionCheck, Plan, PlanStep
 
 

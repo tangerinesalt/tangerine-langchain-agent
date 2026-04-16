@@ -6,7 +6,7 @@ from langchain.chat_models import init_chat_model
 from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import SecretStr
 
-from langchain_code_agent.config import AgentConfig
+from langchain_code_agent.agent_config import AgentConfig
 from langchain_code_agent.llm.local_http import LocalHTTPChatModel
 
 

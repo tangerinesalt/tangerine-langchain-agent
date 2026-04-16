@@ -2,7 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from langchain_code_agent.actions import action_langchain_specs
-from langchain_code_agent.config import AgentConfig
+from langchain_code_agent.agent_config import AgentConfig
 from langchain_code_agent.tools.langchain_tools import (
     build_langchain_tools,
     build_tool_context,

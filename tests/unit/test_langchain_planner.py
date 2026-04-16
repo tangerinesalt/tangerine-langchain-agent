@@ -3,7 +3,7 @@ from pathlib import Path
 from langchain_core.messages import AIMessage
 
 from langchain_code_agent.agent import planner as planner_module
-from langchain_code_agent.config import AgentConfig
+from langchain_code_agent.agent_config import AgentConfig
 from langchain_code_agent.models.plan import Plan, PlanStep
 from langchain_code_agent.models.task import Task
 

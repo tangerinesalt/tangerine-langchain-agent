@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from langchain_code_agent.config import AgentConfig
+from langchain_code_agent.agent_config import AgentConfig
 from langchain_code_agent.llm import factory
 from langchain_code_agent.llm.local_http import LocalHTTPChatModel
 

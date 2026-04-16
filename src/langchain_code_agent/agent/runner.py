@@ -16,7 +16,7 @@ from langchain_code_agent.agent.run_reporter import (
     summarize_tool_data,
 )
 from langchain_code_agent.agent.step_executor import StepExecutor
-from langchain_code_agent.config import AgentConfig
+from langchain_code_agent.agent_config import AgentConfig
 from langchain_code_agent.models.plan import Plan
 from langchain_code_agent.models.result import (
     AttemptResult,

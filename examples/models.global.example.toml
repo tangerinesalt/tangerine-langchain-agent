@@ -1,0 +1,9 @@
+default_profile = "local_qwen"
+
+[profiles.local_qwen]
+model_backend = "langchain"
+model_provider = "openai"
+model = "qwen/qwen3.5-9b"
+model_base_url = "http://localhost:1234/v1"
+model_timeout_seconds = 60
+auth_ref = "lmstudio_local"

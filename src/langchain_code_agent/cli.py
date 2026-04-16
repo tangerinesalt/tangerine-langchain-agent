@@ -5,7 +5,7 @@ import json
 from typing import Any, cast
 
 from langchain_code_agent.agent.runner import AgentRunner
-from langchain_code_agent.config import AgentConfig
+from langchain_code_agent.agent_config import AgentConfig
 from langchain_code_agent.logging import configure_logging
 
 
@@ -60,11 +60,17 @@ def _config_to_dict(config: AgentConfig) -> dict[str, object]:
     return {
         "workspace_root": str(config.workspace_root),
         "planner_backend": config.planner_backend,
+        "model_profile": config.model_profile,
         "model_backend": config.model_backend,
         "model_provider": config.model_provider,
         "model": config.model,
         "model_base_url": config.model_base_url,
         "model_timeout_seconds": config.model_timeout_seconds,
+        "model_sources": {
+            "model_config_path": str(config.model_config_path) if config.model_config_path else None,
+            "auth_path": str(config.auth_path) if config.auth_path else None,
+            "model_api_key_source": config.model_api_key_source,
+        },
         "shell_timeout_seconds": config.shell_timeout_seconds,
         "test_command": config.test_command,
         "log_level": config.log_level,

@@ -10,7 +10,7 @@ from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from langchain_code_agent.actions import action_argument_schemas_text, action_names_csv
-from langchain_code_agent.config import AgentConfig
+from langchain_code_agent.agent_config import AgentConfig
 from langchain_code_agent.agent.plan_output_normalizer import normalize_plan_output
 from langchain_code_agent.agent.plan_validator import validate_plan
 from langchain_code_agent.llm.factory import build_chat_model

@@ -9,7 +9,7 @@ from langchain_code_agent.agent.plan_normalization_rules import (
     apply_json_text_repairs,
     apply_plan_normalization_rules,
 )
-from langchain_code_agent.config import AgentConfig
+from langchain_code_agent.agent_config import AgentConfig
 from langchain_code_agent.models.plan import Plan
 from langchain_code_agent.models.task import Task
 

@@ -8,7 +8,7 @@ from langchain.tools import ToolRuntime, tool
 from langchain_core.tools import BaseTool
 
 from langchain_code_agent.actions import ActionRuntime, action_langchain_specs, execute_action
-from langchain_code_agent.config import AgentConfig
+from langchain_code_agent.agent_config import AgentConfig
 from langchain_code_agent.workspace.repository import Repository
 
 
