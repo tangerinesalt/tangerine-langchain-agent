@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from langchain.tools import ToolRuntime, tool
 from langchain_core.tools import BaseTool
 
-from langchain_code_agent.actions import ActionRuntime, action_langchain_specs, execute_action
+from langchain_code_agent.actions import (
+    ActionRuntime,
+    ActionSpec,
+    action_langchain_specs,
+    execute_action,
+)
 from langchain_code_agent.agent_config import AgentConfig
 from langchain_code_agent.workspace.repository import Repository
 
@@ -78,7 +83,7 @@ def _result_payload(result: Any) -> dict[str, Any]:
     }
 
 
-def _build_langchain_tool(spec) -> BaseTool:
+def _build_langchain_tool(spec: ActionSpec) -> BaseTool:
     @tool(
         spec.name,
         args_schema=spec.langchain_args_schema,
@@ -90,8 +95,7 @@ def _build_langchain_tool(spec) -> BaseTool:
     ) -> dict[str, Any]:
         return _execute_tool_action(spec.name, runtime, _clean_tool_arguments(kwargs))
 
-    _langchain_tool.func.__name__ = f"{spec.name}_langchain_tool"
-    return _langchain_tool
+    return cast(BaseTool, _langchain_tool)
 
 
 def _clean_tool_arguments(arguments: dict[str, Any]) -> dict[str, Any]:

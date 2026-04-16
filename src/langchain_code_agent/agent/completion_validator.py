@@ -43,7 +43,12 @@ def derive_completion_checks(plan: Plan) -> list[CompletionCheck]:
 
 def _derive_checks_for_step(action: str, arguments: dict[str, object]) -> list[CompletionCheck]:
     if action == "write_file" and "path" in arguments:
-        return [CompletionCheck(check_type="file_exists", arguments={"path": str(arguments["path"])})]
+        return [
+            CompletionCheck(
+                check_type="file_exists",
+                arguments={"path": str(arguments["path"])},
+            )
+        ]
     if action == "move_file" and "destination_path" in arguments:
         return [
             CompletionCheck(
@@ -52,7 +57,12 @@ def _derive_checks_for_step(action: str, arguments: dict[str, object]) -> list[C
             )
         ]
     if action == "delete_file" and "path" in arguments:
-        return [CompletionCheck(check_type="file_absent", arguments={"path": str(arguments["path"])})]
+        return [
+            CompletionCheck(
+                check_type="file_absent",
+                arguments={"path": str(arguments["path"])},
+            )
+        ]
     if action in {"insert_text", "replace_in_file"} and "path" in arguments:
         return [
             CompletionCheck(

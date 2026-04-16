@@ -1,14 +1,28 @@
-# LangChain Alignment Notes
+# LangChain Alignment
 
-本项目当前对齐 LangChain v1 官方实践的重点如下：
+项目当前与 LangChain 的关系是“局部对齐，执行层保持工程化控制”。
 
-- 规划阶段优先使用 `create_agent(..., response_format=Plan)`。
-- `Plan` / `PlanStep` 使用 Pydantic 模型，便于结构化输出校验。
-- 模型初始化优先走 `init_chat_model`，保持 provider 解耦。
-- 工具层补充了 `@tool` 封装，便于后续直接接入官方 agent 工具调用模式。
+## 已对齐的部分
 
-保留的工程化偏离：
+- 通过 `create_agent(..., response_format=Plan)` 获取结构化 planner 输出
+- 使用 `init_chat_model` 适配通用 provider
+- 保留 LangChain tool 元数据，便于后续接入更标准的 tool-calling 路径
 
-- 本地 shell 与测试执行仍使用确定性 runner，而不是完全交给通用 agent 循环。
-- 这样可以保留白名单、超时和工作目录约束，并让工具层更容易单元测试。
-- 对于 `local_http` 模型，planner 使用兼容回退路径，而不是强依赖 tool-calling / structured-output 能力。
+## 保留的工程化偏离
+
+- shell、测试、文件系统仍由本地确定性执行器控制
+- planner 输出不会直接绕过本地校验和工作空间边界
+- `local_http` 模式下 planner 仍保留 JSON fallback 路径
+
+## 当前判断
+
+这条路线是合理的，因为项目目标不是“完全让 LangChain agent 直接统治一切”，而是：
+
+- 用 LangChain 提供模型接入与结构化输出能力
+- 用本地 runner 保留可测、可控、可约束的执行链
+
+这也是为什么项目里同时存在：
+
+- LangChain planner 路径
+- 本地 action registry
+- 本地工具执行与 completion validation

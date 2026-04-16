@@ -5,7 +5,6 @@ from pathlib import PurePosixPath
 from langchain_code_agent.actions import validate_action_arguments
 from langchain_code_agent.models.plan import CompletionCheck, Plan
 
-
 READ_ACTIONS = {"read_file", "read_file_head"}
 EDIT_ACTIONS = {"replace_in_file", "insert_text"}
 SHELL_ACTIONS = {"run_command", "run_python_script", "run_shell", "run_tests"}

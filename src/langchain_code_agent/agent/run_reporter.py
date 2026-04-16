@@ -5,7 +5,13 @@ import logging
 from typing import Any
 
 from langchain_code_agent.actions import action_produces_shell_output
-from langchain_code_agent.models.result import ErrorContext, FileChange, FinalReport, RunEvent, RunResult
+from langchain_code_agent.models.result import (
+    ErrorContext,
+    FileChange,
+    FinalReport,
+    RunEvent,
+    RunResult,
+)
 
 
 class RunReporter:

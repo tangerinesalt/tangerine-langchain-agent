@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
@@ -55,7 +56,9 @@ def _parse_json_plan(
     try:
         return _parse_json_text(retry_text)
     except ValidationError as second_error:
-        raise ValueError(f"Planner returned invalid JSON after retry: {second_error}") from second_error
+        raise ValueError(
+            f"Planner returned invalid JSON after retry: {second_error}"
+        ) from second_error
 
 
 def _parse_json_text(text: str) -> Plan:
@@ -68,5 +71,7 @@ def _extract_text(raw_response: Any) -> str:
     if isinstance(content, str):
         return content
     return str(content)
-def _normalize_plan(plan: Plan, *, task: Task, workspace_root) -> Plan:
+
+
+def _normalize_plan(plan: Plan, *, task: Task, workspace_root: Path) -> Plan:
     return apply_plan_normalization_rules(plan, task=task, workspace_root=workspace_root)

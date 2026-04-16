@@ -15,7 +15,11 @@ def test_build_replan_context_collects_failures_successes_and_file_changes() -> 
         plan=Plan(
             summary="Inspect first.",
             steps=[
-                PlanStep(action="list_files", description="Inspect files.", arguments={"limit": 20}),
+                PlanStep(
+                    action="list_files",
+                    description="Inspect files.",
+                    arguments={"limit": 20},
+                ),
             ],
             completion_checks=[
                 CompletionCheck(check_type="file_exists", arguments={"path": "notes.txt"})

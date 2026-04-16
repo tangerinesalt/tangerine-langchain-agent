@@ -18,6 +18,7 @@ from langchain_code_agent.agent.run_reporter import (
 from langchain_code_agent.agent.step_executor import StepExecutor
 from langchain_code_agent.agent_config import AgentConfig
 from langchain_code_agent.models.plan import Plan
+from langchain_code_agent.models.replan import ReplanContext
 from langchain_code_agent.models.result import (
     AttemptResult,
     ErrorContext,
@@ -134,7 +135,7 @@ class AgentRunner:
         execution_mode: str,
         events: list[RunEvent],
         attempt: int,
-        replan_context,
+        replan_context: ReplanContext | None,
     ) -> RunResult:
         task = Task(
             goal=task_text,
@@ -382,7 +383,9 @@ def _fallback_plan() -> Plan:
 
 def _attempt_result_from_run_result(run_result: RunResult, attempt: int) -> AttemptResult:
     completion_errors = [
-        error for error in run_result.final_report.errors if error.error_type == "IncompleteTaskResult"
+        error
+        for error in run_result.final_report.errors
+        if error.error_type == "IncompleteTaskResult"
     ]
     return AttemptResult(
         attempt=attempt,

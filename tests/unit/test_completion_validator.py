@@ -1,8 +1,16 @@
 from pathlib import Path
 
-from langchain_code_agent.agent.completion_validator import derive_completion_checks, validate_completion
+from langchain_code_agent.agent.completion_validator import (
+    derive_completion_checks,
+    validate_completion,
+)
 from langchain_code_agent.models.plan import CompletionCheck, Plan, PlanStep
-from langchain_code_agent.models.result import FinalReport, FileChange, RunResult, StepExecutionResult
+from langchain_code_agent.models.result import (
+    FileChange,
+    FinalReport,
+    RunResult,
+    StepExecutionResult,
+)
 
 
 def test_derive_completion_checks_from_plan_steps() -> None:

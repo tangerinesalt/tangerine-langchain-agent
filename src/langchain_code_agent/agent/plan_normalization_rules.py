@@ -8,7 +8,6 @@ from textwrap import indent
 from langchain_code_agent.models.plan import Plan, PlanStep
 from langchain_code_agent.models.task import Task
 
-
 JsonRepairRule = Callable[[str], str]
 PlanNormalizationRule = Callable[[list[PlanStep], "PlanNormalizationContext"], list[PlanStep]]
 
@@ -179,7 +178,10 @@ def _normalize_step(step: PlanStep, *, workspace_root: Path) -> PlanStep:
             arguments["source_path"] = str(arguments.pop("src"))
         if "dst" in arguments and "destination_path" not in arguments:
             arguments["destination_path"] = str(arguments.pop("dst"))
-    if action in {"read_file", "read_file_head", "write_file", "delete_file"} and "path" in arguments:
+    if (
+        action in {"read_file", "read_file_head", "write_file", "delete_file"}
+        and "path" in arguments
+    ):
         arguments["path"] = _normalize_path(str(arguments["path"]), workspace_root)
     if action == "insert_text" and "path" in arguments:
         arguments["path"] = _normalize_path(str(arguments["path"]), workspace_root)
@@ -187,7 +189,10 @@ def _normalize_step(step: PlanStep, *, workspace_root: Path) -> PlanStep:
         arguments["path"] = _normalize_path(str(arguments["path"]), workspace_root)
     if action == "move_file":
         if "source_path" in arguments:
-            arguments["source_path"] = _normalize_path(str(arguments["source_path"]), workspace_root)
+            arguments["source_path"] = _normalize_path(
+                str(arguments["source_path"]),
+                workspace_root,
+            )
         if "destination_path" in arguments:
             arguments["destination_path"] = _normalize_path(
                 str(arguments["destination_path"]),

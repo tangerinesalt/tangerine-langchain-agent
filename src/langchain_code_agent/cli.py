@@ -67,7 +67,9 @@ def _config_to_dict(config: AgentConfig) -> dict[str, object]:
         "model_base_url": config.model_base_url,
         "model_timeout_seconds": config.model_timeout_seconds,
         "model_sources": {
-            "model_config_path": str(config.model_config_path) if config.model_config_path else None,
+            "model_config_path": (
+                str(config.model_config_path) if config.model_config_path else None
+            ),
             "auth_path": str(config.auth_path) if config.auth_path else None,
             "model_api_key_source": config.model_api_key_source,
         },

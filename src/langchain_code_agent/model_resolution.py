@@ -74,7 +74,11 @@ def resolve_model_settings(
     selected_profile = (
         profile_name or os.getenv("LCA_MODEL_PROFILE") or model_config.get("default_profile")
     )
-    profile_values = _load_profile_values(model_config, selected_profile, resolved_model_config_path)
+    profile_values = _load_profile_values(
+        model_config,
+        selected_profile,
+        resolved_model_config_path,
+    )
 
     env_api_key = os.getenv("LCA_MODEL_API_KEY") or os.getenv("LCA_OPENAI_API_KEY")
     api_key = env_api_key

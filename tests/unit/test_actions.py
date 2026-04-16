@@ -32,8 +32,14 @@ def test_action_argument_schemas_text_is_generated_from_registry() -> None:
     schemas = action_argument_schemas_text()
 
     assert '- get_current_date: {}' in schemas
-    assert '- move_file: {"source_path": string required, "destination_path": string required}' in schemas
-    assert '- run_python_script: {"script": string required, "working_directory": string optional}' in schemas
+    assert (
+        '- move_file: {"source_path": string required, "destination_path": string required}'
+        in schemas
+    )
+    assert (
+        '- run_python_script: {"script": string required, "working_directory": string optional}'
+        in schemas
+    )
 
 
 def test_action_langchain_specs_include_tool_metadata() -> None:

@@ -141,7 +141,9 @@ def test_runner_execute_can_write_file_step(tmp_path: Path) -> None:
     assert result.final_report.file_changes[0].path == "weather.txt"
 
 
-def test_runner_marks_explicit_completion_check_without_changes_as_incomplete(tmp_path: Path) -> None:
+def test_runner_marks_explicit_completion_check_without_changes_as_incomplete(
+    tmp_path: Path,
+) -> None:
     config = AgentConfig(
         workspace_root=tmp_path,
         planner_backend="noop",
@@ -203,7 +205,10 @@ def test_runner_keeps_read_only_task_successful_without_changes(tmp_path: Path) 
 
     assert result.step_results[0].ok is True
     assert result.final_report.success is True
-    assert not any(error.error_type == "IncompleteTaskResult" for error in result.final_report.errors)
+    assert not any(
+        error.error_type == "IncompleteTaskResult"
+        for error in result.final_report.errors
+    )
 
 
 def test_runner_rejects_unknown_arguments_for_action(tmp_path: Path) -> None:
