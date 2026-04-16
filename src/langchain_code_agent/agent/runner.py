@@ -6,7 +6,9 @@ from typing import Any
 
 from langchain_code_agent.actions import ActionRuntime
 from langchain_code_agent.agent.completion_validator import validate_completion
+from langchain_code_agent.agent.plan_validator import validate_plan
 from langchain_code_agent.agent.planner import build_planner
+from langchain_code_agent.agent.replan_context import build_replan_context
 from langchain_code_agent.agent.run_reporter import (
     RunReporter,
     build_final_report,
@@ -17,6 +19,7 @@ from langchain_code_agent.agent.step_executor import StepExecutor
 from langchain_code_agent.config import AgentConfig
 from langchain_code_agent.models.plan import Plan
 from langchain_code_agent.models.result import (
+    AttemptResult,
     ErrorContext,
     FileChange,
     FinalReport,
@@ -46,25 +49,102 @@ class AgentRunner:
         self.planner = build_planner(config)
 
     def run(self, task_text: str, *, execution_mode: str) -> RunResult:
-        task = Task(
-            goal=task_text,
-            workspace_root=self.config.workspace_root,
-            execution_mode=execution_mode,
-        )
         events: list[RunEvent] = []
+        final_result: RunResult | None = None
+        attempts: list[AttemptResult] = []
+        replan_context = None
         self.reporter.record_event(
             events,
             event_type="task_received",
             level="INFO",
             message=f"Starting run in {execution_mode} mode.",
             details={
-                "task": task.goal,
-                "workspace_root": str(task.workspace_root),
+                "task": task_text,
+                "workspace_root": str(self.config.workspace_root),
                 "execution_mode": execution_mode,
             },
         )
+        max_attempts = 1 if execution_mode == "dry-run" else self.config.max_replans + 1
+        for attempt in range(1, max_attempts + 1):
+            self.reporter.record_event(
+                events,
+                event_type="attempt_started",
+                level="INFO",
+                message=f"Starting attempt {attempt}.",
+                details={"attempt": attempt, "task": task_text},
+            )
+            final_result = self._run_single_attempt(
+                task_text,
+                execution_mode=execution_mode,
+                events=events,
+                attempt=attempt,
+                replan_context=replan_context,
+            )
+            attempts.append(_attempt_result_from_run_result(final_result, attempt))
+            if final_result.final_report.success or attempt == max_attempts:
+                break
+
+            replan_context = build_replan_context(task_text, attempts[-1])
+            self.reporter.record_event(
+                events,
+                event_type="replan_requested",
+                level="ERROR",
+                message="Attempt failed; requesting one more plan.",
+                details={
+                    "attempt": attempt,
+                    "next_attempt": attempt + 1,
+                    "replan_context": replan_context.to_dict(),
+                    "errors": [error.to_dict() for error in final_result.final_report.errors],
+                },
+                error_context=final_result.final_report.errors[0]
+                if final_result.final_report.errors
+                else None,
+            )
+
+        assert final_result is not None
+        final_result.task = task_text
+        final_result.attempts = attempts
+        final_result.selected_attempt = attempts[-1].attempt if attempts else None
+        final_result.final_report.task_input = _task_input(
+            Task(
+                goal=task_text,
+                workspace_root=self.config.workspace_root,
+                execution_mode=execution_mode,
+            ),
+            self.config.planner_backend,
+        )
+        self.reporter.record_event(
+            events,
+            event_type="run_completed",
+            level="INFO" if final_result.final_report.success else "ERROR",
+            message="Run completed.",
+            details={
+                "success": final_result.final_report.success,
+                "total_steps": final_result.final_report.total_steps,
+                "failed_steps": final_result.final_report.failed_steps,
+                "attempts": final_result.final_report.attempts,
+            },
+        )
+        return final_result
+
+    def _run_single_attempt(
+        self,
+        task_text: str,
+        *,
+        execution_mode: str,
+        events: list[RunEvent],
+        attempt: int,
+        replan_context,
+    ) -> RunResult:
+        task = Task(
+            goal=task_text,
+            workspace_root=self.config.workspace_root,
+            execution_mode=execution_mode,
+            replan_context=replan_context,
+        )
         try:
             plan = self.planner.create_plan(task)
+            plan = validate_plan(plan, existing_paths=set(self.repository.snapshot_file_state()))
         except Exception as exc:
             planning_error_context = ErrorContext(
                 error_type=type(exc).__name__,
@@ -75,6 +155,7 @@ class AgentRunner:
                 event_type="planning_failed",
                 level="ERROR",
                 message="Planner failed to create a plan.",
+                details={"attempt": attempt},
                 error_context=planning_error_context,
             )
             failed_result = RunResult(
@@ -93,32 +174,26 @@ class AgentRunner:
                     successful_steps=0,
                     failed_steps=1,
                     planned_steps=0,
+                    attempts=attempt,
                     errors=[planning_error_context],
                 ),
-            )
-            self.reporter.record_event(
-                events,
-                event_type="run_completed",
-                level="ERROR",
-                message="Run completed with planning failure.",
-                details={"success": False, "total_steps": 0, "failed_steps": 1},
-                error_context=planning_error_context,
             )
             failed_result.final_report = build_final_report(
                 failed_result,
                 task_input=_task_input(task, self.config.planner_backend),
                 extra_errors=[planning_error_context],
             )
+            failed_result.final_report.attempts = attempt
             return failed_result
+
         self.reporter.record_event(
             events,
             event_type="plan_created",
             level="INFO",
             message=f"Plan created with {len(plan.steps)} steps.",
-            details=plan.to_dict(),
+            details={"attempt": attempt, "plan": plan.to_dict()},
         )
         results: list[StepExecutionResult] = []
-
         for index, step in enumerate(plan.steps, start=1):
             self.reporter.record_event(
                 events,
@@ -127,11 +202,12 @@ class AgentRunner:
                 message=step.description,
                 action=step.action,
                 step_index=index,
-                details={"arguments": dict(step.arguments)},
+                details={"attempt": attempt, "arguments": dict(step.arguments)},
             )
             if execution_mode == "dry-run":
                 results.append(
                     StepExecutionResult(
+                        attempt=attempt,
                         action=step.action,
                         status="planned",
                         ok=True,
@@ -147,7 +223,7 @@ class AgentRunner:
                     message="Step recorded without execution.",
                     action=step.action,
                     step_index=index,
-                    details={"mode": "dry-run"},
+                    details={"attempt": attempt, "mode": "dry-run"},
                 )
                 continue
 
@@ -168,10 +244,14 @@ class AgentRunner:
                     message=f"Detected {len(file_changes)} file changes.",
                     action=step.action,
                     step_index=index,
-                    details={"file_changes": [change.to_dict() for change in file_changes]},
+                    details={
+                        "attempt": attempt,
+                        "file_changes": [change.to_dict() for change in file_changes],
+                    },
                 )
             results.append(
                 StepExecutionResult(
+                    attempt=attempt,
                     action=step.action,
                     status="completed" if tool_result.ok else "failed",
                     ok=tool_result.ok,
@@ -192,6 +272,7 @@ class AgentRunner:
                 action=step.action,
                 step_index=index,
                 details={
+                    "attempt": attempt,
                     "arguments": dict(step.arguments),
                     "ok": tool_result.ok,
                     "data": summarize_tool_data(tool_result.data),
@@ -207,7 +288,7 @@ class AgentRunner:
                     message="Captured shell output.",
                     action=step.action,
                     step_index=index,
-                    details=shell_output,
+                    details={"attempt": attempt, **shell_output},
                 )
             self.reporter.record_event(
                 events,
@@ -220,7 +301,7 @@ class AgentRunner:
                 ),
                 action=step.action,
                 step_index=index,
-                details={"ok": tool_result.ok},
+                details={"attempt": attempt, "ok": tool_result.ok},
                 error_context=error_context,
             )
         run_result = RunResult(
@@ -239,9 +320,11 @@ class AgentRunner:
                 successful_steps=0,
                 failed_steps=0,
                 planned_steps=0,
+                attempts=attempt,
             ),
         )
         run_result.final_report = build_final_report(run_result)
+        run_result.final_report.attempts = attempt
         completion_errors = validate_completion(run_result)
         if completion_errors:
             run_result.final_report.errors.extend(completion_errors)
@@ -251,20 +334,12 @@ class AgentRunner:
                 event_type="completion_validation_failed",
                 level="ERROR",
                 message="Run finished without the expected material output.",
-                details={"errors": [error.to_dict() for error in completion_errors]},
+                details={
+                    "attempt": attempt,
+                    "errors": [error.to_dict() for error in completion_errors],
+                },
                 error_context=completion_errors[0],
             )
-        self.reporter.record_event(
-            events,
-            event_type="run_completed",
-            level="INFO" if run_result.final_report.success else "ERROR",
-            message="Run completed.",
-            details={
-                "success": run_result.final_report.success,
-                "total_steps": run_result.final_report.total_steps,
-                "failed_steps": run_result.final_report.failed_steps,
-            },
-        )
         return run_result
 
 
@@ -290,6 +365,8 @@ def _diff_file_states(
                 )
             )
     return changes
+
+
 def _task_input(task: Task, planner_backend: str) -> dict[str, Any]:
     return {
         "task": task.goal,
@@ -301,3 +378,18 @@ def _task_input(task: Task, planner_backend: str) -> dict[str, Any]:
 
 def _fallback_plan() -> Plan:
     return Plan(summary="Planning failed.", steps=[])
+
+
+def _attempt_result_from_run_result(run_result: RunResult, attempt: int) -> AttemptResult:
+    completion_errors = [
+        error for error in run_result.final_report.errors if error.error_type == "IncompleteTaskResult"
+    ]
+    return AttemptResult(
+        attempt=attempt,
+        task=run_result.task,
+        plan=run_result.plan,
+        step_results=list(run_result.step_results),
+        success=run_result.final_report.success,
+        errors=list(run_result.final_report.errors),
+        completion_errors=completion_errors,
+    )

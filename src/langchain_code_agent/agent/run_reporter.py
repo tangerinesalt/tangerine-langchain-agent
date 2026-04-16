@@ -85,6 +85,7 @@ def build_final_report(
     for index, step in enumerate(run_result.step_results, start=1):
         tool_calls.append(
             {
+                "attempt": step.attempt,
                 "step_index": index,
                 "action": step.action,
                 "status": step.status,
@@ -119,6 +120,7 @@ def build_final_report(
         successful_steps=successful_steps,
         failed_steps=failed_steps,
         planned_steps=planned_steps,
+        attempts=max((step.attempt for step in run_result.step_results), default=1),
         tool_calls=tool_calls,
         shell_outputs=shell_outputs,
         file_changes=file_changes,

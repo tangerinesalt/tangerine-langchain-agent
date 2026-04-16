@@ -253,7 +253,10 @@ def test_langchain_planner_normalizes_python_c_shell_to_run_python_script(monkey
     assert "print(1)" in str(plan.steps[0].arguments["script"])
 
 
-def test_langchain_planner_deduplicates_and_normalizes_arguments(monkeypatch) -> None:
+def test_langchain_planner_deduplicates_and_normalizes_arguments(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     class _FakeModel:
         def invoke(self, messages: list[object]) -> AIMessage:
             assert messages
@@ -271,14 +274,15 @@ def test_langchain_planner_deduplicates_and_normalizes_arguments(monkeypatch) ->
             )
 
     monkeypatch.setattr(planner_module, "build_chat_model", lambda config: _FakeModel())
+    (tmp_path / "main.py").write_text("print('x')\n", encoding="utf-8")
     config = AgentConfig(
-        workspace_root=Path.cwd(),
+        workspace_root=tmp_path,
         planner_backend="langchain",
         model_backend="langchain",
         model_provider="openai",
         model_base_url="http://localhost:1234/v1",
     )
-    task = Task(goal="move main.py", workspace_root=Path.cwd(), execution_mode="execute")
+    task = Task(goal="move main.py", workspace_root=tmp_path, execution_mode="execute")
 
     plan = planner_module.LangChainPlanner(config).create_plan(task)
 
@@ -385,3 +389,34 @@ def test_planner_system_prompt_guides_identity_time_and_conciseness() -> None:
     assert "run_command" in prompt
     assert "run_python_script" in prompt
     assert "do not return only repository inspection steps" in prompt
+
+
+def test_build_task_request_content_includes_replan_context_json() -> None:
+    from langchain_code_agent.models.replan import ReplanContext, ReplanFailedStep
+
+    task = Task(
+        goal="write notes.txt",
+        workspace_root=Path.cwd(),
+        execution_mode="execute",
+        replan_context=ReplanContext(
+            original_task="write notes.txt",
+            attempt=1,
+            previous_plan_summary="Inspect only.",
+            failed_steps=[
+                ReplanFailedStep(
+                    action="read_file_head",
+                    message="Path does not exist: pytest.log",
+                    arguments={"path": "pytest.log"},
+                )
+            ],
+            completion_failures=["Expected file to exist after run: notes.txt"],
+            successful_actions=["list_files"],
+            file_changes=[],
+        ),
+    )
+
+    content = planner_module._build_task_request_content(task)
+
+    assert "Replan context JSON" in content
+    assert '"action": "read_file_head"' in content
+    assert '"completion_failures"' in content

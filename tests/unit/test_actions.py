@@ -3,6 +3,7 @@ from pathlib import Path
 from langchain_code_agent.actions import (
     ActionRuntime,
     action_argument_schemas_text,
+    action_langchain_specs,
     action_names,
     action_produces_shell_output,
     execute_action,
@@ -33,6 +34,14 @@ def test_action_argument_schemas_text_is_generated_from_registry() -> None:
     assert '- get_current_date: {}' in schemas
     assert '- move_file: {"source_path": string required, "destination_path": string required}' in schemas
     assert '- run_python_script: {"script": string required, "working_directory": string optional}' in schemas
+
+
+def test_action_langchain_specs_include_tool_metadata() -> None:
+    specs = {spec.name: spec for spec in action_langchain_specs()}
+
+    assert "write_file" in specs
+    assert specs["write_file"].langchain_args_schema is not None
+    assert "UTF-8 text file" in str(specs["write_file"].langchain_description)
 
 
 def test_execute_action_runs_registry_executor(tmp_path: Path) -> None:

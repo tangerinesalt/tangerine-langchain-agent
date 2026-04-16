@@ -35,6 +35,7 @@ class StepExecutionResult:
     action: str
     status: str
     ok: bool
+    attempt: int = 1
     arguments: dict[str, Any] = field(default_factory=dict)
     data: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
@@ -49,6 +50,28 @@ class StepExecutionResult:
             payload["error_context"] = self.error_context.to_dict()
         payload["file_changes"] = [change.to_dict() for change in self.file_changes]
         return payload
+
+
+@dataclass(slots=True)
+class AttemptResult:
+    attempt: int
+    task: str
+    plan: Plan
+    step_results: list[StepExecutionResult]
+    success: bool
+    errors: list[ErrorContext] = field(default_factory=list)
+    completion_errors: list[ErrorContext] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "attempt": self.attempt,
+            "task": self.task,
+            "plan": self.plan.to_dict(),
+            "step_results": [result.to_dict() for result in self.step_results],
+            "success": self.success,
+            "errors": [error.to_dict() for error in self.errors],
+            "completion_errors": [error.to_dict() for error in self.completion_errors],
+        }
 
 
 @dataclass(slots=True)
@@ -78,6 +101,7 @@ class FinalReport:
     successful_steps: int
     failed_steps: int
     planned_steps: int
+    attempts: int = 1
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     shell_outputs: list[dict[str, Any]] = field(default_factory=list)
     file_changes: list[FileChange] = field(default_factory=list)
@@ -92,6 +116,7 @@ class FinalReport:
             "successful_steps": self.successful_steps,
             "failed_steps": self.failed_steps,
             "planned_steps": self.planned_steps,
+            "attempts": self.attempts,
             "tool_calls": self.tool_calls,
             "shell_outputs": self.shell_outputs,
             "file_changes": [change.to_dict() for change in self.file_changes],
@@ -109,6 +134,8 @@ class RunResult:
     events: list[RunEvent]
     step_results: list[StepExecutionResult]
     final_report: FinalReport
+    attempts: list[AttemptResult] = field(default_factory=list)
+    selected_attempt: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -120,4 +147,6 @@ class RunResult:
             "events": [event.to_dict() for event in self.events],
             "step_results": [result.to_dict() for result in self.step_results],
             "final_report": self.final_report.to_dict(),
+            "attempts": [attempt.to_dict() for attempt in self.attempts],
+            "selected_attempt": self.selected_attempt,
         }

@@ -1,9 +1,9 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+from langchain_code_agent.actions import action_langchain_specs
 from langchain_code_agent.config import AgentConfig
 from langchain_code_agent.tools.langchain_tools import (
-    LANGCHAIN_TOOL_SPECS,
     build_langchain_tools,
     build_tool_context,
 )
@@ -129,4 +129,4 @@ def test_langchain_tools_can_run_tests_with_runtime_context(tmp_path: Path) -> N
 def test_langchain_tools_are_built_from_declared_specs() -> None:
     tools = build_langchain_tools()
 
-    assert [tool.name for tool in tools] == [spec.name for spec in LANGCHAIN_TOOL_SPECS]
+    assert [tool.name for tool in tools] == [spec.name for spec in action_langchain_specs()]

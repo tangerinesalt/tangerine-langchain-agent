@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Protocol
@@ -15,6 +16,7 @@ from langchain_code_agent.agent.plan_validator import validate_plan
 from langchain_code_agent.llm.factory import build_chat_model
 from langchain_code_agent.models.plan import Plan, PlanStep
 from langchain_code_agent.models.task import Task
+from langchain_code_agent.workspace.repository import Repository
 
 PLANNER_ACTIONS = action_names_csv()
 PLANNER_ACTION_SCHEMAS = action_argument_schemas_text()
@@ -89,12 +91,7 @@ class LangChainPlanner:
                 "messages": [
                     {
                         "role": "user",
-                        "content": (
-                            f"Task: {task.goal}\n"
-                            f"Workspace: {task.workspace_root}\n"
-                            f"Execution mode: {task.execution_mode}\n"
-                            "Generate the best execution plan."
-                        ),
+                        "content": _build_task_request_content(task),
                     }
                 ]
             }
@@ -108,7 +105,8 @@ class LangChainPlanner:
                 task=task,
                 config=self.config,
                 response_mode="structured",
-            )
+            ),
+            existing_paths=_existing_workspace_paths(self.config),
         )
 
     def _create_plan_with_json_fallback(self, task: Task) -> Plan:
@@ -122,7 +120,8 @@ class LangChainPlanner:
                 config=self.config,
                 response_mode="json_text",
                 retry_callback=lambda: model.invoke(messages),
-            )
+            ),
+            existing_paths=_existing_workspace_paths(self.config),
         )
 
 
@@ -165,9 +164,7 @@ def _build_json_fallback_messages(task: Task) -> list[SystemMessage | HumanMessa
         SystemMessage(content=PLANNER_SYSTEM_PROMPT),
         HumanMessage(
             content=(
-                f"Task: {task.goal}\n"
-                f"Workspace: {task.workspace_root}\n"
-                f"Execution mode: {task.execution_mode}\n"
+                f"{_build_task_request_content(task)}\n"
                 "Return only valid JSON.\n"
                 "Available actions and arguments:\n"
                 f"{PLANNER_ACTION_SCHEMAS}\n"
@@ -176,10 +173,33 @@ def _build_json_fallback_messages(task: Task) -> list[SystemMessage | HumanMessa
                 "get_current_date before time-sensitive work.\n"
                 "If external information is required and no dedicated tool exists, "
                 "prefer run_python_script over a multiline shell string.\n"
+                "Include completion_checks when the task has a concrete success condition.\n"
                 "Return JSON matching this structure exactly:\n"
                 '{"summary":"string","steps":[{"action":"write_file",'
                 '"description":"string","arguments":{"path":"notes.txt",'
-                '"content":"hello","overwrite":false}}]}'
+                '"content":"hello","overwrite":false}}],'
+                '"completion_checks":[{"check_type":"file_exists",'
+                '"arguments":{"path":"notes.txt"}}]}'
             )
         ),
     ]
+
+
+def _build_task_request_content(task: Task) -> str:
+    lines = [
+        f"Task: {task.goal}",
+        f"Workspace: {task.workspace_root}",
+        f"Execution mode: {task.execution_mode}",
+    ]
+    if task.replan_context is not None:
+        lines.append(
+            "Replan context JSON:\n"
+            + json.dumps(task.replan_context.to_dict(), ensure_ascii=False, indent=2)
+        )
+    lines.append("Generate the best execution plan.")
+    return "\n".join(lines)
+
+
+def _existing_workspace_paths(config: AgentConfig) -> set[str]:
+    repository = Repository(config.workspace_root, config.ignore_patterns)
+    return set(repository.snapshot_file_state())

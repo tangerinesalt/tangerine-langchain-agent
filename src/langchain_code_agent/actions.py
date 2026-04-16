@@ -4,6 +4,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from pydantic import BaseModel
+
 from langchain_code_agent.tools.base import ToolResult
 from langchain_code_agent.tools.delete_file import delete_file_tool
 from langchain_code_agent.tools.find_files_by_name import find_files_by_name_tool
@@ -22,6 +24,25 @@ from langchain_code_agent.tools.run_tests import run_tests_tool
 from langchain_code_agent.tools.search_text import search_text_tool
 from langchain_code_agent.tools.tree_view import tree_view_tool
 from langchain_code_agent.tools.write_file import write_file_tool
+from langchain_code_agent.tools.schemas import (
+    DeleteFileInput,
+    FindFilesByNameInput,
+    GetCurrentDateInput,
+    GlobFilesInput,
+    InsertTextInput,
+    ListFilesInput,
+    MoveFileInput,
+    ReadFileHeadInput,
+    ReadFileInput,
+    ReplaceInFileInput,
+    RunCommandInput,
+    RunPythonScriptInput,
+    RunShellInput,
+    RunTestsInput,
+    SearchTextInput,
+    TreeViewInput,
+    WriteFileInput,
+)
 from langchain_code_agent.workspace.repository import Repository
 
 
@@ -45,6 +66,8 @@ class ActionSpec:
     required_arguments: frozenset[str] = field(default_factory=frozenset)
     produces_shell_output: bool = False
     planner_arguments_schema: str = "{}"
+    langchain_description: str | None = None
+    langchain_args_schema: type[BaseModel] | None = None
 
 
 def action_names() -> list[str]:
@@ -59,6 +82,14 @@ def action_argument_schemas_text() -> str:
     return "\n".join(
         f'- {spec.name}: {spec.planner_arguments_schema}' for spec in ACTION_SPECS.values()
     )
+
+
+def action_langchain_specs() -> list[ActionSpec]:
+    return [
+        spec
+        for spec in ACTION_SPECS.values()
+        if spec.langchain_description is not None and spec.langchain_args_schema is not None
+    ]
 
 
 def get_action_spec(name: str) -> ActionSpec | None:
@@ -263,12 +294,18 @@ ACTION_SPECS: dict[str, ActionSpec] = {
         name="get_current_date",
         executor=_run_get_current_date,
         planner_arguments_schema="{}",
+        langchain_description="Return the current local date, datetime, timezone, and weekday.",
+        langchain_args_schema=GetCurrentDateInput,
     ),
     "list_files": ActionSpec(
         name="list_files",
         executor=_run_list_files,
         allowed_arguments=frozenset({"limit"}),
         planner_arguments_schema='{"limit": integer optional}',
+        langchain_description=(
+            "List repository files under the workspace root. Use this first to inspect layout."
+        ),
+        langchain_args_schema=ListFilesInput,
     ),
     "glob_files": ActionSpec(
         name="glob_files",
@@ -276,6 +313,8 @@ ACTION_SPECS: dict[str, ActionSpec] = {
         allowed_arguments=frozenset({"pattern", "limit"}),
         required_arguments=frozenset({"pattern"}),
         planner_arguments_schema='{"pattern": string required, "limit": integer optional}',
+        langchain_description="Find files by glob pattern relative to the workspace root.",
+        langchain_args_schema=GlobFilesInput,
     ),
     "find_files_by_name": ActionSpec(
         name="find_files_by_name",
@@ -283,12 +322,18 @@ ACTION_SPECS: dict[str, ActionSpec] = {
         allowed_arguments=frozenset({"name", "limit"}),
         required_arguments=frozenset({"name"}),
         planner_arguments_schema='{"name": string required, "limit": integer optional}',
+        langchain_description="Find files whose names contain the provided fragment.",
+        langchain_args_schema=FindFilesByNameInput,
     ),
     "tree_view": ActionSpec(
         name="tree_view",
         executor=_run_tree_view,
         allowed_arguments=frozenset({"path", "depth"}),
         planner_arguments_schema='{"path": string optional, "depth": integer optional}',
+        langchain_description=(
+            "Return a compact directory tree view for a path inside the workspace root."
+        ),
+        langchain_args_schema=TreeViewInput,
     ),
     "read_file": ActionSpec(
         name="read_file",
@@ -296,6 +341,8 @@ ACTION_SPECS: dict[str, ActionSpec] = {
         allowed_arguments=frozenset({"path"}),
         required_arguments=frozenset({"path"}),
         planner_arguments_schema='{"path": string required}',
+        langchain_description="Read a text file from the workspace using a relative path.",
+        langchain_args_schema=ReadFileInput,
     ),
     "read_file_head": ActionSpec(
         name="read_file_head",
@@ -306,6 +353,8 @@ ACTION_SPECS: dict[str, ActionSpec] = {
             '{"path": string required, "start_line": integer optional, '
             '"max_lines": integer optional}'
         ),
+        langchain_description="Read a range of lines from a text file inside the workspace root.",
+        langchain_args_schema=ReadFileHeadInput,
     ),
     "search_text": ActionSpec(
         name="search_text",
@@ -319,6 +368,10 @@ ACTION_SPECS: dict[str, ActionSpec] = {
             '"case_sensitive": boolean optional, "use_regex": boolean optional, '
             '"path_glob": string optional}'
         ),
+        langchain_description=(
+            "Search repository text content and return matching lines with file paths."
+        ),
+        langchain_args_schema=SearchTextInput,
     ),
     "replace_in_file": ActionSpec(
         name="replace_in_file",
@@ -329,6 +382,8 @@ ACTION_SPECS: dict[str, ActionSpec] = {
             '{"path": string required, "old_text": string required, '
             '"new_text": string required, "count": integer optional}'
         ),
+        langchain_description="Replace text inside an existing workspace file.",
+        langchain_args_schema=ReplaceInFileInput,
     ),
     "insert_text": ActionSpec(
         name="insert_text",
@@ -339,6 +394,10 @@ ACTION_SPECS: dict[str, ActionSpec] = {
             '{"path": string required, "anchor": string required, '
             '"text": string required, "position": string optional}'
         ),
+        langchain_description=(
+            "Insert text before or after an anchor inside an existing workspace file."
+        ),
+        langchain_args_schema=InsertTextInput,
     ),
     "delete_file": ActionSpec(
         name="delete_file",
@@ -346,6 +405,8 @@ ACTION_SPECS: dict[str, ActionSpec] = {
         allowed_arguments=frozenset({"path"}),
         required_arguments=frozenset({"path"}),
         planner_arguments_schema='{"path": string required}',
+        langchain_description="Delete an existing file inside the workspace root.",
+        langchain_args_schema=DeleteFileInput,
     ),
     "move_file": ActionSpec(
         name="move_file",
@@ -355,6 +416,8 @@ ACTION_SPECS: dict[str, ActionSpec] = {
         planner_arguments_schema=(
             '{"source_path": string required, "destination_path": string required}'
         ),
+        langchain_description="Move or rename a file inside the workspace root.",
+        langchain_args_schema=MoveFileInput,
     ),
     "run_command": ActionSpec(
         name="run_command",
@@ -365,6 +428,8 @@ ACTION_SPECS: dict[str, ActionSpec] = {
         planner_arguments_schema=(
             '{"argv": string array required, "working_directory": string optional}'
         ),
+        langchain_description="Run a whitelisted command using argv form for safer execution.",
+        langchain_args_schema=RunCommandInput,
     ),
     "run_python_script": ActionSpec(
         name="run_python_script",
@@ -375,6 +440,8 @@ ACTION_SPECS: dict[str, ActionSpec] = {
         planner_arguments_schema=(
             '{"script": string required, "working_directory": string optional}'
         ),
+        langchain_description="Run a multiline Python script inside the workspace root.",
+        langchain_args_schema=RunPythonScriptInput,
     ),
     "run_shell": ActionSpec(
         name="run_shell",
@@ -385,6 +452,11 @@ ACTION_SPECS: dict[str, ActionSpec] = {
         planner_arguments_schema=(
             '{"command": string required, "working_directory": string optional}'
         ),
+        langchain_description=(
+            "Run a whitelisted shell command within the workspace root. "
+            "Use only when file inspection is insufficient."
+        ),
+        langchain_args_schema=RunShellInput,
     ),
     "run_tests": ActionSpec(
         name="run_tests",
@@ -392,6 +464,8 @@ ACTION_SPECS: dict[str, ActionSpec] = {
         allowed_arguments=frozenset({"working_directory"}),
         produces_shell_output=True,
         planner_arguments_schema='{"working_directory": string optional}',
+        langchain_description="Run the configured test command inside the workspace root.",
+        langchain_args_schema=RunTestsInput,
     ),
     "write_file": ActionSpec(
         name="write_file",
@@ -402,5 +476,7 @@ ACTION_SPECS: dict[str, ActionSpec] = {
             '{"path": string required, "content": string required, '
             '"overwrite": boolean optional}'
         ),
+        langchain_description="Write a UTF-8 text file inside the workspace root.",
+        langchain_args_schema=WriteFileInput,
     ),
 }

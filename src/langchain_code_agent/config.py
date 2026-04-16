@@ -37,6 +37,7 @@ class AgentConfig:
     model_base_url: str | None = "http://localhost:1234/v1"
     model_timeout_seconds: int = 60
     shell_timeout_seconds: int = 30
+    max_replans: int = 1
     test_command: str | None = None
     log_level: str = "INFO"
     ignore_patterns: list[str] = field(default_factory=lambda: list(DEFAULT_IGNORE_PATTERNS))
@@ -81,6 +82,7 @@ class AgentConfig:
             model_base_url=data.get("model_base_url", "http://localhost:1234/v1"),
             model_timeout_seconds=int(data.get("model_timeout_seconds", 60)),
             shell_timeout_seconds=int(data.get("shell_timeout_seconds", 30)),
+            max_replans=int(data.get("max_replans", 1)),
             test_command=data.get("test_command"),
             log_level=data.get("log_level", "INFO"),
             ignore_patterns=list(data.get("ignore_patterns", DEFAULT_IGNORE_PATTERNS)),

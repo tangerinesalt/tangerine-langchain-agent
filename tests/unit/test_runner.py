@@ -2,7 +2,7 @@ from pathlib import Path
 
 from langchain_code_agent.agent.runner import AgentRunner
 from langchain_code_agent.config import AgentConfig
-from langchain_code_agent.models.plan import Plan, PlanStep
+from langchain_code_agent.models.plan import CompletionCheck, Plan, PlanStep
 
 
 def test_runner_dry_run_records_plan_without_execution() -> None:
@@ -141,7 +141,7 @@ def test_runner_execute_can_write_file_step(tmp_path: Path) -> None:
     assert result.final_report.file_changes[0].path == "weather.txt"
 
 
-def test_runner_marks_material_output_task_without_changes_as_incomplete(tmp_path: Path) -> None:
+def test_runner_marks_explicit_completion_check_without_changes_as_incomplete(tmp_path: Path) -> None:
     config = AgentConfig(
         workspace_root=tmp_path,
         planner_backend="noop",
@@ -160,15 +160,21 @@ def test_runner_marks_material_output_task_without_changes_as_incomplete(tmp_pat
                     arguments={"limit": 20},
                 )
             ],
+            completion_checks=[
+                CompletionCheck(check_type="file_exists", arguments={"path": "notes.txt"})
+            ],
         )
     )
 
-    result = runner.run("write notes.txt", execution_mode="execute")
+    result = runner.run("inspect notes", execution_mode="execute")
 
-    assert result.step_results[0].ok is True
+    assert result.step_results == []
     assert result.final_report.success is False
-    assert any(error.error_type == "IncompleteTaskResult" for error in result.final_report.errors)
-    assert any(event.event_type == "completion_validation_failed" for event in result.events)
+    assert any(
+        "file_exists" in error.message or "not present after the planned steps" in error.message
+        for error in result.final_report.errors
+    )
+    assert any(event.event_type == "planning_failed" for event in result.events)
 
 
 def test_runner_keeps_read_only_task_successful_without_changes(tmp_path: Path) -> None:
@@ -224,9 +230,9 @@ def test_runner_rejects_unknown_arguments_for_action(tmp_path: Path) -> None:
 
     result = runner.run("invalid args", execution_mode="execute")
 
-    assert result.step_results[0].ok is False
-    assert result.step_results[0].error_context is not None
-    assert "does not accept arguments" in str(result.step_results[0].error)
+    assert result.step_results == []
+    assert result.final_report.success is False
+    assert "does not accept arguments" in result.final_report.errors[0].message
 
 
 def test_runner_execute_supports_phase1_repository_tools(tmp_path: Path) -> None:
@@ -398,9 +404,149 @@ def test_runner_execute_supports_phase3_command_tools(tmp_path: Path) -> None:
     assert result.final_report.shell_outputs
 
 
+def test_runner_replans_once_after_explicit_completion_failure(tmp_path: Path) -> None:
+    config = AgentConfig(
+        workspace_root=tmp_path,
+        planner_backend="noop",
+        shell_timeout_seconds=5,
+        max_replans=1,
+        ignore_patterns=[],
+        allowed_shell_commands=["python"],
+    )
+    runner = AgentRunner(config)
+    planner = _SequentialPlanner(
+        [
+            Plan(
+                summary="Inspect only.",
+                steps=[
+                    PlanStep(
+                        action="list_files",
+                        description="Inspect the workspace.",
+                        arguments={"limit": 20},
+                    )
+                ],
+                completion_checks=[
+                    CompletionCheck(check_type="file_exists", arguments={"path": "notes.txt"})
+                ],
+            ),
+            Plan(
+                summary="Write notes.",
+                steps=[
+                    PlanStep(
+                        action="write_file",
+                        description="Write notes.",
+                        arguments={"path": "notes.txt", "content": "hello"},
+                    )
+                ],
+                completion_checks=[
+                    CompletionCheck(check_type="file_exists", arguments={"path": "notes.txt"})
+                ],
+            ),
+        ]
+    )
+    runner.planner = planner
+
+    result = runner.run("write notes.txt", execution_mode="execute")
+
+    assert planner.calls == 2
+    assert result.final_report.success is True
+    assert result.final_report.attempts == 2
+    assert len(result.attempts) == 2
+    assert result.selected_attempt == 2
+    assert result.attempts[0].success is False
+    assert result.attempts[1].success is True
+    assert result.step_results[0].attempt == 2
+    assert result.final_report.task_input["task"] == "write notes.txt"
+    assert (tmp_path / "notes.txt").read_text(encoding="utf-8") == "hello"
+    assert any(event.event_type == "replan_requested" for event in result.events)
+
+
+def test_runner_retries_once_after_planning_failure(tmp_path: Path) -> None:
+    config = AgentConfig(
+        workspace_root=tmp_path,
+        planner_backend="noop",
+        shell_timeout_seconds=5,
+        max_replans=1,
+        ignore_patterns=[],
+        allowed_shell_commands=["python"],
+    )
+    runner = AgentRunner(config)
+    planner = _SequentialPlanner(
+        [
+            ValueError("planner output malformed"),
+            Plan(
+                summary="Write notes.",
+                steps=[
+                    PlanStep(
+                        action="write_file",
+                        description="Write notes.",
+                        arguments={"path": "notes.txt", "content": "hello"},
+                    )
+                ],
+                completion_checks=[
+                    CompletionCheck(check_type="file_exists", arguments={"path": "notes.txt"})
+                ],
+            ),
+        ]
+    )
+    runner.planner = planner
+
+    result = runner.run("write notes.txt", execution_mode="execute")
+
+    assert planner.calls == 2
+    assert result.final_report.success is True
+    assert result.final_report.attempts == 2
+    assert len(result.attempts) == 2
+    assert result.selected_attempt == 2
+    assert any(event.event_type == "planning_failed" for event in result.events)
+    assert any(event.event_type == "replan_requested" for event in result.events)
+
+
+def test_runner_rejects_semantically_invalid_plan_before_execution(tmp_path: Path) -> None:
+    config = AgentConfig(
+        workspace_root=tmp_path,
+        planner_backend="noop",
+        shell_timeout_seconds=5,
+        ignore_patterns=[],
+        allowed_shell_commands=["python"],
+    )
+    runner = AgentRunner(config)
+    runner.planner = _StubPlanner(
+        Plan(
+            summary="Read missing log.",
+            steps=[
+                PlanStep(
+                    action="read_file_head",
+                    description="Read pytest log.",
+                    arguments={"path": "pytest.log", "max_lines": 20},
+                )
+            ],
+        )
+    )
+
+    result = runner.run("inspect logs", execution_mode="execute")
+
+    assert result.final_report.success is False
+    assert result.step_results == []
+    assert any(event.event_type == "planning_failed" for event in result.events)
+
+
 class _StubPlanner:
     def __init__(self, plan: Plan) -> None:
         self.plan = plan
 
     def create_plan(self, task) -> Plan:
         return self.plan
+
+
+class _SequentialPlanner:
+    def __init__(self, outcomes: list[Plan | Exception]) -> None:
+        self.outcomes = list(outcomes)
+        self.calls = 0
+
+    def create_plan(self, task) -> Plan:
+        self.calls += 1
+        outcome = self.outcomes[self.calls - 1]
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
