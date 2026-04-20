@@ -109,6 +109,47 @@ def test_config_uses_env_api_key_override(tmp_path: Path, monkeypatch) -> None:
     assert config.model_api_key_source == "env:LCA_MODEL_API_KEY"
 
 
+def test_config_uses_openrouter_env_api_key_override(tmp_path: Path, monkeypatch) -> None:
+    model_config_path = tmp_path / "models.global.toml"
+    model_config_path.write_text(
+        "\n".join(
+            [
+                'default_profile = "openrouter_elephant_free"',
+                "",
+                "[profiles.openrouter_elephant_free]",
+                'model_backend = "langchain"',
+                'model_provider = "openrouter"',
+                'model = "openrouter/elephant-alpha"',
+                'auth_ref = "openrouter"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text(
+        json.dumps(
+            {
+                "credentials": {
+                    "openrouter": {
+                        "model_api_key": "file-key",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("OPENROUTER_API_KEY", "openrouter-env-key")
+
+    config = AgentConfig.from_sources(
+        workspace_root=tmp_path,
+        global_model_config_path=model_config_path,
+        auth_path=auth_path,
+    )
+
+    assert config.model_api_key == "openrouter-env-key"
+    assert config.model_api_key_source == "env:OPENROUTER_API_KEY"
+
+
 def test_config_requires_model_data_for_langchain_planner(tmp_path: Path) -> None:
     model_config_path = tmp_path / "models.global.toml"
     model_config_path.write_text(

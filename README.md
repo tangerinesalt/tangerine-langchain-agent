@@ -64,7 +64,14 @@ Copy-Item .\examples\auth.example.json .\auth.json
 编辑 [models.global.toml](./models.global.toml:1)：
 
 ```toml
-default_profile = "local_qwen"
+default_profile = "openrouter_elephant_free"
+
+[profiles.openrouter_elephant_free]
+model_backend = "langchain"
+model_provider = "openrouter"
+model = "openrouter/elephant-alpha"
+model_timeout_seconds = 60
+auth_ref = "openrouter"
 
 [profiles.local_qwen]
 model_backend = "langchain"
@@ -80,6 +87,9 @@ auth_ref = "lmstudio_local"
 ```json
 {
   "credentials": {
+    "openrouter": {
+      "model_api_key": "your-openrouter-key"
+    },
     "lmstudio_local": {
       "model_api_key": "your-real-key"
     }
@@ -92,6 +102,7 @@ auth_ref = "lmstudio_local"
 - `auth.json` 已被 `.gitignore` 忽略
 - 真实 key 只应放在 `auth.json`
 - `models.global.toml` 负责模型 profile，不应存真实 key
+- OpenRouter 也可以直接通过 `OPENROUTER_API_KEY` 或 `LCA_OPENROUTER_API_KEY` 注入
 
 ### 2. 工作空间配置
 

@@ -1,5 +1,8 @@
 {
   "credentials": {
+    "openrouter": {
+      "model_api_key": "replace-with-your-openrouter-api-key"
+    },
     "lmstudio_local": {
       "model_api_key": "replace-me"
     }

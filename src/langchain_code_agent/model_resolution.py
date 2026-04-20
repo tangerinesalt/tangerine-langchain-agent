@@ -80,7 +80,12 @@ def resolve_model_settings(
         resolved_model_config_path,
     )
 
-    env_api_key = os.getenv("LCA_MODEL_API_KEY") or os.getenv("LCA_OPENAI_API_KEY")
+    env_api_key = (
+        os.getenv("LCA_MODEL_API_KEY")
+        or os.getenv("LCA_OPENROUTER_API_KEY")
+        or os.getenv("OPENROUTER_API_KEY")
+        or os.getenv("LCA_OPENAI_API_KEY")
+    )
     api_key = env_api_key
     api_key_source = _api_key_env_source() if env_api_key else None
     if not api_key:
@@ -197,6 +202,10 @@ def _load_json_if_exists(path: Path) -> dict[str, Any]:
 def _api_key_env_source() -> str | None:
     if os.getenv("LCA_MODEL_API_KEY"):
         return "env:LCA_MODEL_API_KEY"
+    if os.getenv("LCA_OPENROUTER_API_KEY"):
+        return "env:LCA_OPENROUTER_API_KEY"
+    if os.getenv("OPENROUTER_API_KEY"):
+        return "env:OPENROUTER_API_KEY"
     if os.getenv("LCA_OPENAI_API_KEY"):
         return "env:LCA_OPENAI_API_KEY"
     return None

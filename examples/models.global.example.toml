@@ -1,4 +1,11 @@
-default_profile = "local_qwen"
+default_profile = "openrouter_elephant_free"
+
+[profiles.openrouter_elephant_free]
+model_backend = "langchain"
+model_provider = "openrouter"
+model = "openrouter/elephant-alpha"
+model_timeout_seconds = 60
+auth_ref = "openrouter"
 
 [profiles.local_qwen]
 model_backend = "langchain"
