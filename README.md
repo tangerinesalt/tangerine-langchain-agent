@@ -164,10 +164,10 @@ python -m mypy src
 
 ## 文档
 
-- 架构说明：[docs/architecture.md](/C:/Users/tangerine/.langchain-code-agent/docs/architecture.md:1)
-- 运维手册：[docs/runbook.md](/C:/Users/tangerine/.langchain-code-agent/docs/runbook.md:1)
-- 已知限制与后续建议：[docs/limitations.md](/C:/Users/tangerine/.langchain-code-agent/docs/limitations.md:1)
-- LangChain 对齐说明：[docs/langchain-alignment.md](/C:/Users/tangerine/.langchain-code-agent/docs/langchain-alignment.md:1)
+- 架构说明：[docs/architecture.md](./docs/architecture.md)
+- 运维手册：[docs/runbook.md](./docs/runbook.md)
+- 已知限制与后续建议：[docs/limitations.md](./docs/limitations.md)
+- LangChain 对齐说明：[docs/langchain-alignment.md](./docs/langchain-alignment.md)
 l
 python -m pytest
 python -m ruff check .
