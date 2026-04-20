@@ -61,7 +61,7 @@ Copy-Item .\examples\models.global.example.toml .\models.global.toml
 Copy-Item .\examples\auth.example.json .\auth.json
 ```
 
-编辑 [models.global.toml](/C:/Users/tangerine/.langchain-code-agent/models.global.toml:1)：
+编辑 [models.global.toml](./models.global.toml:1)：
 
 ```toml
 default_profile = "local_qwen"
@@ -75,7 +75,7 @@ model_timeout_seconds = 60
 auth_ref = "lmstudio_local"
 ```
 
-编辑 [auth.json](/C:/Users/tangerine/.langchain-code-agent/auth.json:1)：
+编辑 [auth.json](./auth.json:1)：
 
 ```json
 {
@@ -99,9 +99,9 @@ auth_ref = "lmstudio_local"
 
 示例见：
 
-- [examples/config.local.toml](/C:/Users/tangerine/.langchain-code-agent/examples/config.local.toml:1)
-- [examples/config.local-http.toml](/C:/Users/tangerine/.langchain-code-agent/examples/config.local-http.toml:1)
-- [tmp.agenttest.config.toml](/C:/Users/tangerine/.langchain-code-agent/tmp.agenttest.config.toml:1)
+- [examples/config.local.toml](./examples/config.local.toml:1)
+- [examples/config.local-http.toml](./examples/config.local-http.toml:1)
+- [tmp.agenttest.config.toml](./tmp.agenttest.config.toml:1)
 
 典型内容：
 
