@@ -95,3 +95,47 @@ def test_apply_plan_normalization_rules_collapses_empty_write_file_into_script_o
     assert [step.action for step in normalized.steps] == ["get_current_date", "run_python_script"]
     assert "write_text(_output_text" in str(normalized.steps[1].arguments["script"])
     assert "weather_forecast.txt" in str(normalized.steps[1].arguments["script"])
+
+
+def test_apply_plan_normalization_rules_converts_run_command_command_to_run_shell() -> None:
+    plan = Plan(
+        summary="Run tests.",
+        steps=[
+            PlanStep(
+                action="run_command",
+                description="Run pytest.",
+                arguments={"command": "python -m pytest -q"},
+            )
+        ],
+    )
+    task = Task(goal="fix failing tests", workspace_root=Path.cwd(), execution_mode="execute")
+
+    normalized = apply_plan_normalization_rules(plan, task=task, workspace_root=Path.cwd())
+
+    assert normalized.steps[0].action == "run_shell"
+    assert normalized.steps[0].arguments == {"command": "python -m pytest -q"}
+
+
+def test_apply_plan_normalization_rules_maps_file_alias_and_run_tests_path() -> None:
+    workspace_root = Path("C:/Users/tangerine/Desktop/Test/agentTest/test")
+    plan = Plan(
+        summary="Read and test.",
+        steps=[
+            PlanStep(
+                action="read_file",
+                description="Read implementation.",
+                arguments={"file": "math_utils.py"},
+            ),
+            PlanStep(
+                action="run_tests",
+                description="Run tests from workspace.",
+                arguments={"path": "C:/Users/tangerine/Desktop/Test/agentTest/test"},
+            ),
+        ],
+    )
+    task = Task(goal="fix failing tests", workspace_root=workspace_root, execution_mode="execute")
+
+    normalized = apply_plan_normalization_rules(plan, task=task, workspace_root=workspace_root)
+
+    assert normalized.steps[0].arguments == {"path": "math_utils.py"}
+    assert normalized.steps[1].arguments == {"working_directory": "."}

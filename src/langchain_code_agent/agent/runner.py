@@ -6,7 +6,7 @@ from typing import Any
 
 from langchain_code_agent.actions import ActionRuntime
 from langchain_code_agent.agent.completion_validator import validate_completion
-from langchain_code_agent.agent.plan_validator import validate_plan
+from langchain_code_agent.agent.plan_validator import validate_plan, validate_task_specific_plan
 from langchain_code_agent.agent.planner import build_planner
 from langchain_code_agent.agent.replan_context import build_replan_context
 from langchain_code_agent.agent.run_reporter import (
@@ -146,6 +146,7 @@ class AgentRunner:
         try:
             plan = self.planner.create_plan(task)
             plan = validate_plan(plan, existing_paths=set(self.repository.snapshot_file_state()))
+            plan = validate_task_specific_plan(plan, task_text=task.goal)
         except Exception as exc:
             planning_error_context = ErrorContext(
                 error_type=type(exc).__name__,

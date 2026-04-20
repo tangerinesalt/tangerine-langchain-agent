@@ -3,7 +3,7 @@ default_profile = "openrouter_elephant_free"
 [profiles.openrouter_elephant_free]
 model_backend = "langchain"
 model_provider = "openrouter"
-model = "openrouter/elephant-alpha"
+model = "nvidia/nemotron-3-super-120b-a12b:free"
 model_timeout_seconds = 60
 auth_ref = "openrouter"
 

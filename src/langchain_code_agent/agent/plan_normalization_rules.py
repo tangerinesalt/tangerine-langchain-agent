@@ -171,6 +171,17 @@ def _normalize_step(step: PlanStep, *, workspace_root: Path) -> PlanStep:
     arguments = dict(step.arguments)
     action = step.action
 
+    if "file" in arguments and "path" not in arguments:
+        if action in {
+            "read_file",
+            "read_file_head",
+            "write_file",
+            "delete_file",
+            "replace_in_file",
+            "insert_text",
+        }:
+            arguments["path"] = str(arguments.pop("file"))
+
     if action == "find_files_by_name" and "query" in arguments and "name" not in arguments:
         arguments["name"] = str(arguments.pop("query"))
     if action == "move_file":
@@ -178,6 +189,8 @@ def _normalize_step(step: PlanStep, *, workspace_root: Path) -> PlanStep:
             arguments["source_path"] = str(arguments.pop("src"))
         if "dst" in arguments and "destination_path" not in arguments:
             arguments["destination_path"] = str(arguments.pop("dst"))
+    if action == "run_tests" and "path" in arguments and "working_directory" not in arguments:
+        arguments["working_directory"] = str(arguments.pop("path"))
     if (
         action in {"read_file", "read_file_head", "write_file", "delete_file"}
         and "path" in arguments
@@ -198,6 +211,11 @@ def _normalize_step(step: PlanStep, *, workspace_root: Path) -> PlanStep:
                 str(arguments["destination_path"]),
                 workspace_root,
             )
+    if action == "run_tests" and "working_directory" in arguments:
+        arguments["working_directory"] = _normalize_path(
+            str(arguments["working_directory"]),
+            workspace_root,
+        )
 
     if action == "run_shell" and "command" in arguments:
         script = _extract_python_c_script(str(arguments["command"]))
@@ -211,6 +229,16 @@ def _normalize_step(step: PlanStep, *, workspace_root: Path) -> PlanStep:
                 description=step.description,
                 arguments=converted_arguments,
             )
+    if action == "run_command" and "command" in arguments and "argv" not in arguments:
+        converted_arguments = {"command": str(arguments["command"])}
+        working_directory = arguments.get("working_directory")
+        if working_directory is not None:
+            converted_arguments["working_directory"] = str(working_directory)
+        return PlanStep(
+            action="run_shell",
+            description=step.description,
+            arguments=converted_arguments,
+        )
 
     return PlanStep(action=action, description=step.description.strip(), arguments=arguments)
 

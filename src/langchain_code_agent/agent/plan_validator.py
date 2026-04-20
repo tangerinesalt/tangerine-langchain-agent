@@ -8,6 +8,7 @@ from langchain_code_agent.models.plan import CompletionCheck, Plan
 READ_ACTIONS = {"read_file", "read_file_head"}
 EDIT_ACTIONS = {"replace_in_file", "insert_text"}
 SHELL_ACTIONS = {"run_command", "run_python_script", "run_shell", "run_tests"}
+MUTATING_ACTIONS = EDIT_ACTIONS | {"write_file", "move_file", "delete_file"}
 
 
 def validate_plan(plan: Plan, *, existing_paths: set[str] | None = None) -> Plan:
@@ -21,6 +22,34 @@ def validate_plan(plan: Plan, *, existing_paths: set[str] | None = None) -> Plan
             raise ValueError(validation_error)
     if existing_paths is not None:
         _validate_plan_semantics(plan, existing_paths=existing_paths)
+    return plan
+
+
+def validate_task_specific_plan(plan: Plan, *, task_text: str) -> Plan:
+    if not _is_fix_failing_tests_task(task_text):
+        return plan
+
+    last_edit_index = max(
+        (index for index, step in enumerate(plan.steps) if step.action in MUTATING_ACTIONS),
+        default=-1,
+    )
+    if last_edit_index == -1:
+        raise ValueError(
+            "Fix-failing-tests tasks must include at least one edit step such as "
+            "replace_in_file, insert_text, write_file, move_file, or delete_file."
+        )
+
+    if not any(step.action == "run_tests" for step in plan.steps):
+        raise ValueError("Fix-failing-tests tasks must include a final run_tests verification step.")
+
+    if not any(
+        step.action == "run_tests" and index > last_edit_index
+        for index, step in enumerate(plan.steps)
+    ):
+        raise ValueError(
+            "Fix-failing-tests tasks must run run_tests after the planned edit steps."
+        )
+
     return plan
 
 
@@ -131,3 +160,12 @@ def _validate_plan_semantics(plan: Plan, *, existing_paths: set[str]) -> None:
 
 def _normalize_path(path: str) -> str:
     return PurePosixPath(path.replace("\\", "/")).as_posix().lstrip("./")
+
+
+def _is_fix_failing_tests_task(task_text: str) -> bool:
+    lowered = task_text.lower()
+    fix_markers = ("fix", "repair", "resolve", "make ")
+    test_markers = ("failing test", "failing tests", "pytest", "tests", "test suite")
+    return any(marker in lowered for marker in fix_markers) and any(
+        marker in lowered for marker in test_markers
+    )

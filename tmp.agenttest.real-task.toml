@@ -1,0 +1,19 @@
+workspace_root = "C:/Users/tangerine/Desktop/Test/agentTest/test"
+planner_backend = "langchain"
+
+shell_timeout_seconds = 60
+max_replans = 2
+test_command = "python -m pytest -q"
+allowed_shell_commands = ["python", "pytest", "rg", "git"]
+
+ignore_patterns = [
+  ".git",
+  ".venv",
+  "__pycache__",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".ruff_cache",
+  "node_modules",
+  "dist",
+  "build",
+]

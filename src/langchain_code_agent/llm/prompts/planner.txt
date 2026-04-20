@@ -11,6 +11,11 @@ Requirements:
 - Use run_command when argv-based execution is clearer than a shell string.
 - Use run_shell only when simpler actions are insufficient.
 - Use write_file when the task requires creating or updating a text file in the workspace.
+- When the task says tests are already failing, do not stop at inspection or a diagnostic
+  run_tests step. Read the relevant files, include an edit step, and finish with a final
+  verification step such as run_tests.
+- When the task already states that tests are failing, do not use an initial failing run_tests
+  step as the only evidence-gathering action unless the task explicitly asks for it.
 - Keep the plan concise, practical, and low-noise.
 - Use short summaries and short step descriptions.
 - Do not add commentary, motivation, or duplicate steps.

@@ -11,6 +11,8 @@ class ReplanFailedStep:
     arguments: dict[str, Any] = field(default_factory=dict)
     error_type: str | None = None
     step_index: int | None = None
+    stdout_excerpt: str | None = None
+    stderr_excerpt: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -22,6 +24,7 @@ class ReplanContext:
     attempt: int
     previous_plan_summary: str
     failed_steps: list[ReplanFailedStep] = field(default_factory=list)
+    attempt_failures: list[str] = field(default_factory=list)
     completion_failures: list[str] = field(default_factory=list)
     successful_actions: list[str] = field(default_factory=list)
     file_changes: list[str] = field(default_factory=list)

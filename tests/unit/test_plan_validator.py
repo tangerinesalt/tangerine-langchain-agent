@@ -1,6 +1,6 @@
 import pytest
 
-from langchain_code_agent.agent.plan_validator import validate_plan
+from langchain_code_agent.agent.plan_validator import validate_plan, validate_task_specific_plan
 from langchain_code_agent.models.plan import CompletionCheck, Plan, PlanStep
 
 
@@ -81,3 +81,81 @@ def test_validate_plan_rejects_completion_check_for_missing_action() -> None:
 
     with pytest.raises(ValueError, match="references missing action"):
         validate_plan(plan, existing_paths={"main.py"})
+
+
+def test_validate_task_specific_plan_accepts_fix_failing_tests_with_edit_and_verification() -> None:
+    plan = Plan(
+        summary="Fix the implementation and verify.",
+        steps=[
+            PlanStep(
+                action="read_file",
+                description="Read the implementation.",
+                arguments={"path": "math_utils.py"},
+            ),
+            PlanStep(
+                action="replace_in_file",
+                description="Fix the implementation.",
+                arguments={
+                    "path": "math_utils.py",
+                    "old_text": "return value + factor + offset",
+                    "new_text": "return value * factor + offset",
+                },
+            ),
+            PlanStep(
+                action="run_tests",
+                description="Verify the fix.",
+                arguments={},
+            ),
+        ],
+    )
+
+    assert (
+        validate_task_specific_plan(plan, task_text="Fix the failing tests in this workspace.")
+        == plan
+    )
+
+
+def test_validate_task_specific_plan_rejects_fix_failing_tests_without_edit_step() -> None:
+    plan = Plan(
+        summary="Inspect only.",
+        steps=[
+            PlanStep(
+                action="read_file",
+                description="Read the implementation.",
+                arguments={"path": "math_utils.py"},
+            ),
+            PlanStep(
+                action="run_tests",
+                description="Run tests.",
+                arguments={},
+            ),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="must include at least one edit step"):
+        validate_task_specific_plan(plan, task_text="Fix the failing tests in this workspace.")
+
+
+def test_validate_task_specific_plan_rejects_verification_before_edit() -> None:
+    plan = Plan(
+        summary="Run tests too early.",
+        steps=[
+            PlanStep(
+                action="run_tests",
+                description="Run tests.",
+                arguments={},
+            ),
+            PlanStep(
+                action="replace_in_file",
+                description="Fix the implementation.",
+                arguments={
+                    "path": "math_utils.py",
+                    "old_text": "return value + factor + offset",
+                    "new_text": "return value * factor + offset",
+                },
+            ),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="must run run_tests after the planned edit steps"):
+        validate_task_specific_plan(plan, task_text="Fix the failing tests in this workspace.")
