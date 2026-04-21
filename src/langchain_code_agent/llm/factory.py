@@ -26,12 +26,13 @@ def build_chat_model(config: AgentConfig) -> BaseChatModel:
         kwargs["api_key"] = SecretStr(config.model_api_key)
     if config.model_base_url:
         kwargs["base_url"] = config.model_base_url
-
-    if ":" in config.model:
-        return cast(BaseChatModel, init_chat_model(config.model, **kwargs))
+        
     if config.model_provider:
         return cast(
             BaseChatModel,
             init_chat_model(config.model, model_provider=config.model_provider, **kwargs),
         )
+    if ":" in config.model:
+        return cast(BaseChatModel, init_chat_model(config.model, **kwargs))
+    
     return cast(BaseChatModel, init_chat_model(config.model, **kwargs))
