@@ -98,7 +98,10 @@ def test_build_replan_context_includes_failed_shell_output_excerpts() -> None:
                 ok=False,
                 arguments={},
                 data={
-                    "stdout": "FAILED tests/test_math_utils.py::test_scale_and_offset\nassert 7 == 12",
+                    "stdout": (
+                        "FAILED tests/test_math_utils.py::test_scale_and_offset\n"
+                        "assert 7 == 12"
+                    ),
                     "stderr": "traceback line",
                 },
                 error="Command failed with exit code 1",

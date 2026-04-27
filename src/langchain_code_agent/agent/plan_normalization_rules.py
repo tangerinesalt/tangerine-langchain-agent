@@ -171,16 +171,15 @@ def _normalize_step(step: PlanStep, *, workspace_root: Path) -> PlanStep:
     arguments = dict(step.arguments)
     action = step.action
 
-    if "file" in arguments and "path" not in arguments:
-        if action in {
-            "read_file",
-            "read_file_head",
-            "write_file",
-            "delete_file",
-            "replace_in_file",
-            "insert_text",
-        }:
-            arguments["path"] = str(arguments.pop("file"))
+    if "file" in arguments and "path" not in arguments and action in {
+        "read_file",
+        "read_file_head",
+        "write_file",
+        "delete_file",
+        "replace_in_file",
+        "insert_text",
+    }:
+        arguments["path"] = str(arguments.pop("file"))
 
     if action == "find_files_by_name" and "query" in arguments and "name" not in arguments:
         arguments["name"] = str(arguments.pop("query"))

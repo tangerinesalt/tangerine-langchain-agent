@@ -40,7 +40,9 @@ def validate_task_specific_plan(plan: Plan, *, task_text: str) -> Plan:
         )
 
     if not any(step.action == "run_tests" for step in plan.steps):
-        raise ValueError("Fix-failing-tests tasks must include a final run_tests verification step.")
+        raise ValueError(
+            "Fix-failing-tests tasks must include a final run_tests verification step."
+        )
 
     if not any(
         step.action == "run_tests" and index > last_edit_index
