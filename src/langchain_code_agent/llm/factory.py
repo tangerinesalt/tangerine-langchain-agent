@@ -27,7 +27,7 @@ def build_chat_model(config: AgentConfig) -> BaseChatModel:
     if config.model_base_url:
         kwargs["base_url"] = config.model_base_url
 
-    if ":" in config.model:
+    if _has_provider_prefix(config.model):
         return cast(BaseChatModel, init_chat_model(config.model, **kwargs))
     if config.model_provider:
         return cast(
@@ -36,3 +36,10 @@ def build_chat_model(config: AgentConfig) -> BaseChatModel:
         )
 
     return cast(BaseChatModel, init_chat_model(config.model, **kwargs))
+
+
+def _has_provider_prefix(model: str) -> bool:
+    if ":" not in model:
+        return False
+    prefix = model.split(":", 1)[0]
+    return bool(prefix) and "/" not in prefix and "\\" not in prefix

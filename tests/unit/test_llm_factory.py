@@ -89,6 +89,34 @@ def test_build_chat_model_supports_openrouter_provider(monkeypatch) -> None:
     assert calls[0][1] == "openrouter"
 
 
+def test_build_chat_model_keeps_provider_for_colon_model_suffix(monkeypatch) -> None:
+    calls: list[tuple[str | None, str | None, dict[str, object]]] = []
+
+    def fake_init_chat_model(
+        model: str | None = None,
+        *,
+        model_provider: str | None = None,
+        **kwargs: object,
+    ) -> str:
+        calls.append((model, model_provider, kwargs))
+        return "openrouter-model"
+
+    monkeypatch.setattr(factory, "init_chat_model", fake_init_chat_model)
+    config = AgentConfig(
+        workspace_root=Path.cwd(),
+        model_backend="langchain",
+        model_provider="openrouter",
+        model="nvidia/nemotron-3-super-120b-a12b:free",
+        model_api_key="test-key",
+    )
+
+    model = factory.build_chat_model(config)
+
+    assert model == "openrouter-model"
+    assert calls[0][0] == "nvidia/nemotron-3-super-120b-a12b:free"
+    assert calls[0][1] == "openrouter"
+
+
 def test_build_chat_model_supports_local_http_backend() -> None:
     config = AgentConfig(
         workspace_root=Path.cwd(),
