@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
+from types import UnionType
+from typing import Union, get_args, get_origin
 
 from pydantic import BaseModel
 
@@ -61,12 +63,39 @@ class ActionRuntime:
 class ActionSpec:
     name: str
     executor: ActionExecutor
-    allowed_arguments: frozenset[str] = field(default_factory=frozenset)
-    required_arguments: frozenset[str] = field(default_factory=frozenset)
     produces_shell_output: bool = False
-    planner_arguments_schema: str = "{}"
     langchain_description: str | None = None
     langchain_args_schema: type[BaseModel] | None = None
+
+    @property
+    def allowed_arguments(self) -> frozenset[str]:
+        if self.langchain_args_schema is None:
+            return frozenset()
+        return frozenset(self.langchain_args_schema.model_fields)
+
+    @property
+    def required_arguments(self) -> frozenset[str]:
+        if self.langchain_args_schema is None:
+            return frozenset()
+        return frozenset(
+            name
+            for name, field_info in self.langchain_args_schema.model_fields.items()
+            if field_info.is_required()
+        )
+
+    @property
+    def planner_arguments_schema(self) -> str:
+        if self.langchain_args_schema is None:
+            return "{}"
+        fields = self.langchain_args_schema.model_fields
+        if not fields:
+            return "{}"
+        parts = [
+            f'"{name}": {_field_type_label(field_info.annotation)} '
+            f'{"required" if field_info.is_required() else "optional"}'
+            for name, field_info in fields.items()
+        ]
+        return "{" + ", ".join(parts) + "}"
 
 
 def action_names() -> list[str]:
@@ -288,19 +317,43 @@ def _coerce_optional_str(value: object) -> str | None:
     return str(value)
 
 
+def _field_type_label(annotation: object) -> str:
+    annotation = _strip_optional(annotation)
+    origin = get_origin(annotation)
+    if annotation is str:
+        return "string"
+    if annotation is int:
+        return "integer"
+    if annotation is bool:
+        return "boolean"
+    if origin is list:
+        item_args = get_args(annotation)
+        if item_args and item_args[0] is str:
+            return "string array"
+        return "array"
+    return "value"
+
+
+def _strip_optional(annotation: object) -> object:
+    origin = get_origin(annotation)
+    if origin not in {Union, UnionType}:
+        return annotation
+    args = [arg for arg in get_args(annotation) if arg is not type(None)]
+    if len(args) == 1:
+        return args[0]
+    return annotation
+
+
 ACTION_SPECS: dict[str, ActionSpec] = {
     "get_current_date": ActionSpec(
         name="get_current_date",
         executor=_run_get_current_date,
-        planner_arguments_schema="{}",
         langchain_description="Return the current local date, datetime, timezone, and weekday.",
         langchain_args_schema=GetCurrentDateInput,
     ),
     "list_files": ActionSpec(
         name="list_files",
         executor=_run_list_files,
-        allowed_arguments=frozenset({"limit"}),
-        planner_arguments_schema='{"limit": integer optional}',
         langchain_description=(
             "List repository files under the workspace root. Use this first to inspect layout."
         ),
@@ -309,26 +362,18 @@ ACTION_SPECS: dict[str, ActionSpec] = {
     "glob_files": ActionSpec(
         name="glob_files",
         executor=_run_glob_files,
-        allowed_arguments=frozenset({"pattern", "limit"}),
-        required_arguments=frozenset({"pattern"}),
-        planner_arguments_schema='{"pattern": string required, "limit": integer optional}',
         langchain_description="Find files by glob pattern relative to the workspace root.",
         langchain_args_schema=GlobFilesInput,
     ),
     "find_files_by_name": ActionSpec(
         name="find_files_by_name",
         executor=_run_find_files_by_name,
-        allowed_arguments=frozenset({"name", "limit"}),
-        required_arguments=frozenset({"name"}),
-        planner_arguments_schema='{"name": string required, "limit": integer optional}',
         langchain_description="Find files whose names contain the provided fragment.",
         langchain_args_schema=FindFilesByNameInput,
     ),
     "tree_view": ActionSpec(
         name="tree_view",
         executor=_run_tree_view,
-        allowed_arguments=frozenset({"path", "depth"}),
-        planner_arguments_schema='{"path": string optional, "depth": integer optional}',
         langchain_description=(
             "Return a compact directory tree view for a path inside the workspace root."
         ),
@@ -337,36 +382,18 @@ ACTION_SPECS: dict[str, ActionSpec] = {
     "read_file": ActionSpec(
         name="read_file",
         executor=_run_read_file,
-        allowed_arguments=frozenset({"path"}),
-        required_arguments=frozenset({"path"}),
-        planner_arguments_schema='{"path": string required}',
         langchain_description="Read a text file from the workspace using a relative path.",
         langchain_args_schema=ReadFileInput,
     ),
     "read_file_head": ActionSpec(
         name="read_file_head",
         executor=_run_read_file_head,
-        allowed_arguments=frozenset({"path", "start_line", "max_lines"}),
-        required_arguments=frozenset({"path"}),
-        planner_arguments_schema=(
-            '{"path": string required, "start_line": integer optional, '
-            '"max_lines": integer optional}'
-        ),
         langchain_description="Read a range of lines from a text file inside the workspace root.",
         langchain_args_schema=ReadFileHeadInput,
     ),
     "search_text": ActionSpec(
         name="search_text",
         executor=_run_search_text,
-        allowed_arguments=frozenset(
-            {"query", "max_results", "case_sensitive", "use_regex", "path_glob"}
-        ),
-        required_arguments=frozenset({"query"}),
-        planner_arguments_schema=(
-            '{"query": string required, "max_results": integer optional, '
-            '"case_sensitive": boolean optional, "use_regex": boolean optional, '
-            '"path_glob": string optional}'
-        ),
         langchain_description=(
             "Search repository text content and return matching lines with file paths."
         ),
@@ -375,24 +402,12 @@ ACTION_SPECS: dict[str, ActionSpec] = {
     "replace_in_file": ActionSpec(
         name="replace_in_file",
         executor=_run_replace_in_file,
-        allowed_arguments=frozenset({"path", "old_text", "new_text", "count"}),
-        required_arguments=frozenset({"path", "old_text", "new_text"}),
-        planner_arguments_schema=(
-            '{"path": string required, "old_text": string required, '
-            '"new_text": string required, "count": integer optional}'
-        ),
         langchain_description="Replace text inside an existing workspace file.",
         langchain_args_schema=ReplaceInFileInput,
     ),
     "insert_text": ActionSpec(
         name="insert_text",
         executor=_run_insert_text,
-        allowed_arguments=frozenset({"path", "anchor", "text", "position"}),
-        required_arguments=frozenset({"path", "anchor", "text"}),
-        planner_arguments_schema=(
-            '{"path": string required, "anchor": string required, '
-            '"text": string required, "position": string optional}'
-        ),
         langchain_description=(
             "Insert text before or after an anchor inside an existing workspace file."
         ),
@@ -401,56 +416,33 @@ ACTION_SPECS: dict[str, ActionSpec] = {
     "delete_file": ActionSpec(
         name="delete_file",
         executor=_run_delete_file,
-        allowed_arguments=frozenset({"path"}),
-        required_arguments=frozenset({"path"}),
-        planner_arguments_schema='{"path": string required}',
         langchain_description="Delete an existing file inside the workspace root.",
         langchain_args_schema=DeleteFileInput,
     ),
     "move_file": ActionSpec(
         name="move_file",
         executor=_run_move_file,
-        allowed_arguments=frozenset({"source_path", "destination_path"}),
-        required_arguments=frozenset({"source_path", "destination_path"}),
-        planner_arguments_schema=(
-            '{"source_path": string required, "destination_path": string required}'
-        ),
         langchain_description="Move or rename a file inside the workspace root.",
         langchain_args_schema=MoveFileInput,
     ),
     "run_command": ActionSpec(
         name="run_command",
         executor=_run_run_command,
-        allowed_arguments=frozenset({"argv", "working_directory"}),
-        required_arguments=frozenset({"argv"}),
         produces_shell_output=True,
-        planner_arguments_schema=(
-            '{"argv": string array required, "working_directory": string optional}'
-        ),
         langchain_description="Run a whitelisted command using argv form for safer execution.",
         langchain_args_schema=RunCommandInput,
     ),
     "run_python_script": ActionSpec(
         name="run_python_script",
         executor=_run_run_python_script,
-        allowed_arguments=frozenset({"script", "working_directory"}),
-        required_arguments=frozenset({"script"}),
         produces_shell_output=True,
-        planner_arguments_schema=(
-            '{"script": string required, "working_directory": string optional}'
-        ),
         langchain_description="Run a multiline Python script inside the workspace root.",
         langchain_args_schema=RunPythonScriptInput,
     ),
     "run_shell": ActionSpec(
         name="run_shell",
         executor=_run_run_shell,
-        allowed_arguments=frozenset({"command", "working_directory"}),
-        required_arguments=frozenset({"command"}),
         produces_shell_output=True,
-        planner_arguments_schema=(
-            '{"command": string required, "working_directory": string optional}'
-        ),
         langchain_description=(
             "Run a whitelisted shell command within the workspace root. "
             "Use only when file inspection is insufficient."
@@ -460,21 +452,13 @@ ACTION_SPECS: dict[str, ActionSpec] = {
     "run_tests": ActionSpec(
         name="run_tests",
         executor=_run_run_tests,
-        allowed_arguments=frozenset({"working_directory"}),
         produces_shell_output=True,
-        planner_arguments_schema='{"working_directory": string optional}',
         langchain_description="Run the configured test command inside the workspace root.",
         langchain_args_schema=RunTestsInput,
     ),
     "write_file": ActionSpec(
         name="write_file",
         executor=_run_write_file,
-        allowed_arguments=frozenset({"path", "content", "overwrite"}),
-        required_arguments=frozenset({"path", "content"}),
-        planner_arguments_schema=(
-            '{"path": string required, "content": string required, '
-            '"overwrite": boolean optional}'
-        ),
         langchain_description="Write a UTF-8 text file inside the workspace root.",
         langchain_args_schema=WriteFileInput,
     ),
