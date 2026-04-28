@@ -174,6 +174,9 @@ def _build_json_fallback_messages(task: Task) -> list[SystemMessage | HumanMessa
                 "If external information is required and no dedicated tool exists, "
                 "prefer run_python_script over a multiline shell string.\n"
                 "Include completion_checks when the task has a concrete success condition.\n"
+                "Use file_contains for exact expected file text, tests_passed for run_tests, "
+                "command_exit_code for shell command return codes, and "
+                "no_unexpected_file_changes when only specific paths may change.\n"
                 "Return JSON matching this structure exactly:\n"
                 '{"summary":"string","steps":[{"action":"write_file",'
                 '"description":"string","arguments":{"path":"notes.txt",'

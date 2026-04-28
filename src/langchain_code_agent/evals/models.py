@@ -45,7 +45,7 @@ class EvalCase(BaseModel):
 
 
 class EvalCaseResult(BaseModel):
-    schema_version: str = "eval-case-result-v2"
+    schema_version: str = "eval-case-result-v3"
     id: str
     run_id: str
     artifact_path: str | None = None
@@ -69,7 +69,7 @@ class EvalCaseResult(BaseModel):
 
 
 class EvalReport(BaseModel):
-    schema_version: str = "eval-report-v2"
+    schema_version: str = "eval-report-v3"
     eval_id: str
     started_at: str
     total_cases: int
@@ -81,6 +81,8 @@ class EvalReport(BaseModel):
     replan_rate: float
     tool_error_rate: float
     completion_failure_rate: float
+    false_success_rate: float
+    incomplete_task_rate: float
     planning_failure_rate: float
     plan_repair_success_rate: float
     failure_codes: dict[str, int] = Field(default_factory=dict)

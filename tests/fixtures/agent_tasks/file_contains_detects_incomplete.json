@@ -1,0 +1,33 @@
+{
+  "id": "file-contains-detects-incomplete",
+  "task": "write notes.txt containing expected-marker",
+  "workspace_fixture": "tests/fixtures/agent_tasks/fixtures/empty",
+  "max_replans": 0,
+  "expected_success": false,
+  "expected_actions": ["write_file"],
+  "expected_attempts": 1,
+  "expected_error_types": ["IncompleteTaskResult"],
+  "expected_event_types": ["completion_validation_failed"],
+  "expected_file_changes": [{"path": "notes.txt", "change_type": "added"}],
+  "expected_files": [
+    {"path": "notes.txt", "exists": true, "content": "wrong-marker"}
+  ],
+  "plans": [
+    {
+      "summary": "Write the wrong marker.",
+      "steps": [
+        {
+          "action": "write_file",
+          "description": "Write notes with the wrong marker.",
+          "arguments": {"path": "notes.txt", "content": "wrong-marker"}
+        }
+      ],
+      "completion_checks": [
+        {
+          "check_type": "file_contains",
+          "arguments": {"path": "notes.txt", "text": "expected-marker"}
+        }
+      ]
+    }
+  ]
+}

@@ -10,8 +10,12 @@ class CompletionCheck(BaseModel):
         "file_exists",
         "file_absent",
         "file_changed",
+        "file_contains",
         "action_succeeded",
+        "command_exit_code",
         "shell_output_contains",
+        "tests_passed",
+        "no_unexpected_file_changes",
     ]
     arguments: dict[str, Any] = Field(default_factory=dict)
 

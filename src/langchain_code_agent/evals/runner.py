@@ -279,6 +279,9 @@ def _build_report(*, started_at: str, case_results: list[EvalCaseResult]) -> Eva
     total_cases = len(case_results)
     passed_cases = sum(1 for result in case_results if result.passed)
     repair_cases = [result for result in case_results if result.planning_repaired]
+    completion_failure_cases = [
+        result for result in case_results if "IncompleteTaskResult" in result.error_types
+    ]
     return EvalReport(
         eval_id=uuid4().hex,
         started_at=started_at,
@@ -297,7 +300,15 @@ def _build_report(*, started_at: str, case_results: list[EvalCaseResult]) -> Eva
             total_cases,
         ),
         completion_failure_rate=_rate(
-            sum(1 for result in case_results if "IncompleteTaskResult" in result.error_types),
+            len(completion_failure_cases),
+            total_cases,
+        ),
+        false_success_rate=_rate(
+            sum(1 for result in completion_failure_cases if result.agent_success),
+            total_cases,
+        ),
+        incomplete_task_rate=_rate(
+            sum(1 for result in completion_failure_cases if not result.agent_success),
             total_cases,
         ),
         planning_failure_rate=_rate(

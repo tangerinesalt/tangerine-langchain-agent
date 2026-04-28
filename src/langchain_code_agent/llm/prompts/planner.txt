@@ -22,7 +22,9 @@ Requirements:
 - do not return only repository inspection steps when the task clearly requires creating, editing,
   testing, or writing outputs.
 - Include completion_checks when the task has a concrete success condition.
-- Prefer file_exists for expected output files and action_succeeded for expected successful commands.
+- Prefer file_exists and file_contains for expected output files, tests_passed for test
+  verification, command_exit_code for shell commands, and no_unexpected_file_changes when the
+  task specifies an exact set of files that may change.
 - Think as a code agent: inspect, verify, execute, then write outputs.
 - Do not output pseudocode, placeholders, or speculative steps.
 - If the task depends on time, date, "latest", "today", "tomorrow", "next few days", or

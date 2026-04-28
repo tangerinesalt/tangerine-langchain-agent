@@ -26,7 +26,7 @@ def test_run_eval_case_checks_expected_file_state(tmp_path: Path) -> None:
 
     assert result.passed is True
     assert result.agent_success is True
-    assert result.schema_version == "eval-case-result-v2"
+    assert result.schema_version == "eval-case-result-v3"
     assert result.run_id
     assert result.artifact_path is not None
     assert Path(result.artifact_path).exists()
@@ -45,20 +45,22 @@ def test_run_eval_suite_generates_baseline_report(tmp_path: Path) -> None:
         report_path=report_path,
     )
 
-    assert report.schema_version == "eval-report-v2"
-    assert report.total_cases == 6
-    assert report.passed_cases == 6
+    assert report.schema_version == "eval-report-v3"
+    assert report.total_cases == 7
+    assert report.passed_cases == 7
     assert report.failed_cases == 0
     assert report.success_rate == 1.0
-    assert report.replan_rate == 1 / 6
-    assert report.tool_error_rate == 1 / 6
-    assert report.completion_failure_rate == 1 / 6
-    assert report.planning_failure_rate == 1 / 6
+    assert report.replan_rate == 1 / 7
+    assert report.tool_error_rate == 1 / 7
+    assert report.completion_failure_rate == 2 / 7
+    assert report.false_success_rate == 1 / 7
+    assert report.incomplete_task_rate == 1 / 7
+    assert report.planning_failure_rate == 1 / 7
     assert report.plan_repair_success_rate == 1.0
     assert report.planning_failure_codes == {"missing_workspace_path": 1}
     assert report.repair_codes == {"append_run_tests_verification": 1}
     assert report_path.exists()
-    assert json.loads(report_path.read_text(encoding="utf-8"))["total_cases"] == 6
+    assert json.loads(report_path.read_text(encoding="utf-8"))["total_cases"] == 7
     missing_file = next(
         result for result in report.case_results if result.id == "missing-file-rejected"
     )
@@ -71,3 +73,10 @@ def test_run_eval_suite_generates_baseline_report(tmp_path: Path) -> None:
     )
     assert repaired.planning_repaired is True
     assert repaired.repair_code == "append_run_tests_verification"
+    incomplete = next(
+        result
+        for result in report.case_results
+        if result.id == "file-contains-detects-incomplete"
+    )
+    assert incomplete.agent_success is False
+    assert incomplete.observed_failure_type == "completion_failure"

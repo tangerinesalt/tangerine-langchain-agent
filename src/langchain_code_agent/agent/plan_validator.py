@@ -103,8 +103,12 @@ COMPLETION_CHECK_ARGUMENTS: dict[str, frozenset[str]] = {
     "file_exists": frozenset({"path"}),
     "file_absent": frozenset({"path"}),
     "file_changed": frozenset({"path"}),
+    "file_contains": frozenset({"path", "text"}),
     "action_succeeded": frozenset({"action"}),
+    "command_exit_code": frozenset({"action", "code"}),
     "shell_output_contains": frozenset({"action", "text"}),
+    "tests_passed": frozenset(),
+    "no_unexpected_file_changes": frozenset({"paths"}),
 }
 
 
@@ -186,12 +190,31 @@ def _validate_plan_semantics(plan: Plan, *, existing_paths: set[str]) -> None:
                     f"by the current plan: {path}",
                     failure_code=UNSATISFIABLE_COMPLETION_CHECK,
                 )
-        elif check.check_type in {"action_succeeded", "shell_output_contains"}:
+        elif check.check_type == "file_contains":
+            path = _normalize_path(str(check.arguments["path"]))
+            if path not in known_files and path not in touched_files:
+                raise PlanValidationError(
+                    "Completion check 'file_contains' references a file that is not present "
+                    f"after the planned steps: {path}",
+                    failure_code=UNSATISFIABLE_COMPLETION_CHECK,
+                )
+        elif check.check_type in {
+            "action_succeeded",
+            "command_exit_code",
+            "shell_output_contains",
+        }:
             action_name = str(check.arguments["action"])
             if action_name not in planned_actions:
                 raise PlanValidationError(
                     f"Completion check '{check.check_type}' references missing action: "
                     f"{action_name}",
+                    failure_code=UNSATISFIABLE_COMPLETION_CHECK,
+                )
+        elif check.check_type == "no_unexpected_file_changes":
+            expected_paths = check.arguments["paths"]
+            if not isinstance(expected_paths, list):
+                raise PlanValidationError(
+                    "Completion check 'no_unexpected_file_changes' expects paths to be a list.",
                     failure_code=UNSATISFIABLE_COMPLETION_CHECK,
                 )
 
