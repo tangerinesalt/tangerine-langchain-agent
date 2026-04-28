@@ -9,3 +9,6 @@
 auth.json
 *.auth.json
 *.secrets.toml
+
+# Local agent run and eval artifacts
+.lca/

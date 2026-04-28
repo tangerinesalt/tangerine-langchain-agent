@@ -1,0 +1,23 @@
+{
+  "id": "missing-file-rejected",
+  "task": "read a missing file",
+  "workspace_fixture": "tests/fixtures/agent_tasks/fixtures/empty",
+  "max_replans": 0,
+  "expected_success": false,
+  "expected_actions": [],
+  "expected_attempts": 1,
+  "expected_error_types": ["ValueError"],
+  "expected_event_types": ["planning_failed"],
+  "plans": [
+    {
+      "summary": "Read missing file.",
+      "steps": [
+        {
+          "action": "read_file_head",
+          "description": "Read missing.txt.",
+          "arguments": {"path": "missing.txt", "max_lines": 20}
+        }
+      ]
+    }
+  ]
+}

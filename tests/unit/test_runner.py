@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from langchain_code_agent.agent.runner import AgentRunner
@@ -139,6 +140,45 @@ def test_runner_execute_can_write_file_step(tmp_path: Path) -> None:
     assert (tmp_path / "weather.txt").read_text(encoding="utf-8") == "sunny"
     assert result.final_report.file_changes
     assert result.final_report.file_changes[0].path == "weather.txt"
+
+
+def test_runner_records_run_diagnostics_and_artifact(tmp_path: Path) -> None:
+    config = AgentConfig(
+        workspace_root=tmp_path,
+        planner_backend="noop",
+        shell_timeout_seconds=5,
+        ignore_patterns=[],
+        allowed_shell_commands=["python"],
+    )
+    runner = AgentRunner(config)
+    runner.planner = _StubPlanner(
+        Plan(
+            summary="Write a note.",
+            steps=[
+                PlanStep(
+                    action="write_file",
+                    description="Write the output file.",
+                    arguments={"path": "note.txt", "content": "hello"},
+                )
+            ],
+        )
+    )
+
+    result = runner.run("write note", execution_mode="execute")
+
+    assert result.run_id
+    assert result.duration_ms is not None
+    assert result.final_report.run_id == result.run_id
+    assert result.final_report.duration_ms == result.duration_ms
+    assert all(event.run_id == result.run_id for event in result.events)
+    assert result.step_results[0].duration_ms is not None
+    assert result.final_report.tool_calls[0]["duration_ms"] is not None
+    assert result.artifact_path is not None
+    artifact = Path(result.artifact_path)
+    assert artifact.exists()
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    assert payload["run_id"] == result.run_id
+    assert payload["final_report"]["artifact_path"] == result.artifact_path
 
 
 def test_runner_marks_explicit_completion_check_without_changes_as_incomplete(
@@ -534,6 +574,8 @@ def test_runner_rejects_semantically_invalid_plan_before_execution(tmp_path: Pat
     assert result.final_report.success is False
     assert result.step_results == []
     assert any(event.event_type == "planning_failed" for event in result.events)
+    assert result.final_report.errors[0].stage == "validate_plan"
+    assert result.final_report.errors[0].traceback
 
 
 class _StubPlanner:

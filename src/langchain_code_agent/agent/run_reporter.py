@@ -17,6 +17,7 @@ from langchain_code_agent.models.result import (
 class RunReporter:
     def __init__(self, logger: logging.Logger) -> None:
         self.logger = logger
+        self.current_run_id = ""
 
     def record_event(
         self,
@@ -25,6 +26,7 @@ class RunReporter:
         event_type: str,
         level: str,
         message: str,
+        run_id: str = "",
         action: str | None = None,
         step_index: int | None = None,
         details: dict[str, Any] | None = None,
@@ -34,6 +36,7 @@ class RunReporter:
             event_type=event_type,
             level=level.upper(),
             message=message,
+            run_id=run_id or self.current_run_id,
             action=action,
             step_index=step_index,
             details=details or {},
@@ -97,6 +100,7 @@ def build_final_report(
                 "status": step.status,
                 "ok": step.ok,
                 "arguments": step.arguments,
+                "duration_ms": step.duration_ms,
             }
         )
         shell_output = extract_shell_output(step.action, step.data, index)
@@ -114,6 +118,7 @@ def build_final_report(
 
     return FinalReport(
         success=failed_steps == 0 and not errors,
+        run_id=run_result.run_id,
         task_input=task_input
         or {
             "task": run_result.task,

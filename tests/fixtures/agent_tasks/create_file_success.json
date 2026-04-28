@@ -1,0 +1,29 @@
+{
+  "id": "create-file-success",
+  "task": "create notes.txt with hello",
+  "workspace_fixture": "tests/fixtures/agent_tasks/fixtures/empty",
+  "expected_success": true,
+  "expected_actions": ["write_file"],
+  "expected_attempts": 1,
+  "expected_file_changes": [
+    {"path": "notes.txt", "change_type": "added"}
+  ],
+  "expected_files": [
+    {"path": "notes.txt", "exists": true, "content": "hello\n"}
+  ],
+  "plans": [
+    {
+      "summary": "Write notes file.",
+      "steps": [
+        {
+          "action": "write_file",
+          "description": "Write notes.txt.",
+          "arguments": {"path": "notes.txt", "content": "hello\n"}
+        }
+      ],
+      "completion_checks": [
+        {"check_type": "file_exists", "arguments": {"path": "notes.txt"}}
+      ]
+    }
+  ]
+}

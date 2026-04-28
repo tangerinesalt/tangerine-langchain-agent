@@ -1,0 +1,25 @@
+{
+  "id": "run-tests-success",
+  "task": "run the sample repo tests",
+  "workspace_fixture": "tests/fixtures/sample_repo",
+  "test_command": "python -m pytest -q",
+  "allowed_shell_commands": ["python", "pytest"],
+  "expected_success": true,
+  "expected_actions": ["run_tests"],
+  "expected_attempts": 1,
+  "plans": [
+    {
+      "summary": "Run configured tests.",
+      "steps": [
+        {
+          "action": "run_tests",
+          "description": "Run tests.",
+          "arguments": {}
+        }
+      ],
+      "completion_checks": [
+        {"check_type": "action_succeeded", "arguments": {"action": "run_tests"}}
+      ]
+    }
+  ]
+}

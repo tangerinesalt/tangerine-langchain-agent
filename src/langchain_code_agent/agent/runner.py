@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import json
 import logging
+import time
+import traceback
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from langchain_code_agent.actions import ActionRuntime
 from langchain_code_agent.agent.completion_validator import validate_completion
@@ -50,6 +55,10 @@ class AgentRunner:
         self.planner = build_planner(config)
 
     def run(self, task_text: str, *, execution_mode: str) -> RunResult:
+        run_id = uuid4().hex
+        run_started_at = datetime.now(UTC).isoformat()
+        run_started = time.perf_counter()
+        self.reporter.current_run_id = run_id
         events: list[RunEvent] = []
         final_result: RunResult | None = None
         attempts: list[AttemptResult] = []
@@ -74,14 +83,35 @@ class AgentRunner:
                 message=f"Starting attempt {attempt}.",
                 details={"attempt": attempt, "task": task_text},
             )
+            attempt_started = time.perf_counter()
             final_result = self._run_single_attempt(
                 task_text,
                 execution_mode=execution_mode,
                 events=events,
                 attempt=attempt,
                 replan_context=replan_context,
+                run_id=run_id,
+                run_started_at=run_started_at,
             )
-            attempts.append(_attempt_result_from_run_result(final_result, attempt))
+            attempt_duration_ms = _elapsed_ms(attempt_started)
+            attempts.append(
+                _attempt_result_from_run_result(
+                    final_result,
+                    attempt,
+                    duration_ms=attempt_duration_ms,
+                )
+            )
+            self.reporter.record_event(
+                events,
+                event_type="attempt_completed",
+                level="INFO" if final_result.final_report.success else "ERROR",
+                message=f"Attempt {attempt} completed.",
+                details={
+                    "attempt": attempt,
+                    "success": final_result.final_report.success,
+                    "duration_ms": attempt_duration_ms,
+                },
+            )
             if final_result.final_report.success or attempt == max_attempts:
                 break
 
@@ -104,6 +134,8 @@ class AgentRunner:
 
         assert final_result is not None
         final_result.task = task_text
+        final_result.run_id = run_id
+        final_result.started_at = run_started_at
         final_result.attempts = attempts
         final_result.selected_attempt = attempts[-1].attempt if attempts else None
         final_result.final_report.task_input = _task_input(
@@ -114,6 +146,15 @@ class AgentRunner:
             ),
             self.config.planner_backend,
         )
+        run_duration_ms = _elapsed_ms(run_started)
+        completed_at = datetime.now(UTC).isoformat()
+        artifact_path = _run_artifact_path(self.config.workspace_root, run_id)
+        final_result.completed_at = completed_at
+        final_result.duration_ms = run_duration_ms
+        final_result.artifact_path = str(artifact_path)
+        final_result.final_report.run_id = run_id
+        final_result.final_report.duration_ms = run_duration_ms
+        final_result.final_report.artifact_path = str(artifact_path)
         self.reporter.record_event(
             events,
             event_type="run_completed",
@@ -124,8 +165,11 @@ class AgentRunner:
                 "total_steps": final_result.final_report.total_steps,
                 "failed_steps": final_result.final_report.failed_steps,
                 "attempts": final_result.final_report.attempts,
+                "duration_ms": run_duration_ms,
+                "artifact_path": str(artifact_path),
             },
         )
+        _write_run_artifact(final_result, artifact_path)
         return final_result
 
     def _run_single_attempt(
@@ -136,6 +180,8 @@ class AgentRunner:
         events: list[RunEvent],
         attempt: int,
         replan_context: ReplanContext | None,
+        run_id: str,
+        run_started_at: str,
     ) -> RunResult:
         task = Task(
             goal=task_text,
@@ -143,24 +189,40 @@ class AgentRunner:
             execution_mode=execution_mode,
             replan_context=replan_context,
         )
+        planning_started = time.perf_counter()
+        planning_stage = "planner_call"
+        planner_output: dict[str, Any] | None = None
         try:
             plan = self.planner.create_plan(task)
+            planner_output = plan.to_dict()
+            planning_stage = "validate_plan"
             plan = validate_plan(plan, existing_paths=set(self.repository.snapshot_file_state()))
+            planning_stage = "validate_task_specific_plan"
             plan = validate_task_specific_plan(plan, task_text=task.goal)
         except Exception as exc:
+            planning_duration_ms = _elapsed_ms(planning_started)
             planning_error_context = ErrorContext(
                 error_type=type(exc).__name__,
                 message=str(exc),
+                stage=planning_stage,
+                traceback=traceback.format_exc(),
             )
             self.reporter.record_event(
                 events,
                 event_type="planning_failed",
                 level="ERROR",
                 message="Planner failed to create a plan.",
-                details={"attempt": attempt},
+                details={
+                    "attempt": attempt,
+                    "stage": planning_stage,
+                    "duration_ms": planning_duration_ms,
+                    "planner_output": planner_output,
+                    "error_type": type(exc).__name__,
+                },
                 error_context=planning_error_context,
             )
             failed_result = RunResult(
+                run_id=run_id,
                 task=task.goal,
                 workspace_root=str(task.workspace_root),
                 execution_mode=task.execution_mode,
@@ -170,6 +232,7 @@ class AgentRunner:
                 step_results=[],
                 final_report=FinalReport(
                     success=False,
+                    run_id=run_id,
                     task_input=_task_input(task, self.config.planner_backend),
                     plan_summary="Planning failed before any step was created.",
                     total_steps=0,
@@ -179,6 +242,7 @@ class AgentRunner:
                     attempts=attempt,
                     errors=[planning_error_context],
                 ),
+                started_at=run_started_at,
             )
             failed_result.final_report = build_final_report(
                 failed_result,
@@ -188,12 +252,18 @@ class AgentRunner:
             failed_result.final_report.attempts = attempt
             return failed_result
 
+        planning_duration_ms = _elapsed_ms(planning_started)
         self.reporter.record_event(
             events,
             event_type="plan_created",
             level="INFO",
             message=f"Plan created with {len(plan.steps)} steps.",
-            details={"attempt": attempt, "plan": plan.to_dict()},
+            details={
+                "attempt": attempt,
+                "duration_ms": planning_duration_ms,
+                "planner_output": planner_output,
+                "validated_plan": plan.to_dict(),
+            },
         )
         results: list[StepExecutionResult] = []
         for index, step in enumerate(plan.steps, start=1):
@@ -207,6 +277,7 @@ class AgentRunner:
                 details={"attempt": attempt, "arguments": dict(step.arguments)},
             )
             if execution_mode == "dry-run":
+                step_completed_at = datetime.now(UTC).isoformat()
                 results.append(
                     StepExecutionResult(
                         attempt=attempt,
@@ -215,7 +286,8 @@ class AgentRunner:
                         ok=True,
                         arguments=dict(step.arguments),
                         data={"arguments": step.arguments, "description": step.description},
-                        completed_at=datetime.now(UTC).isoformat(),
+                        completed_at=step_completed_at,
+                        duration_ms=0,
                     )
                 )
                 self.reporter.record_event(
@@ -230,6 +302,7 @@ class AgentRunner:
                 continue
 
             step_started_at = datetime.now(UTC).isoformat()
+            step_started = time.perf_counter()
             before_state = self.repository.snapshot_file_state()
             tool_result, error_context = self.step_executor.execute_step(
                 step.action,
@@ -251,6 +324,7 @@ class AgentRunner:
                         "file_changes": [change.to_dict() for change in file_changes],
                     },
                 )
+            step_duration_ms = _elapsed_ms(step_started)
             results.append(
                 StepExecutionResult(
                     attempt=attempt,
@@ -264,6 +338,7 @@ class AgentRunner:
                     file_changes=file_changes,
                     started_at=step_started_at,
                     completed_at=datetime.now(UTC).isoformat(),
+                    duration_ms=step_duration_ms,
                 )
             )
             self.reporter.record_event(
@@ -277,6 +352,7 @@ class AgentRunner:
                     "attempt": attempt,
                     "arguments": dict(step.arguments),
                     "ok": tool_result.ok,
+                    "duration_ms": step_duration_ms,
                     "data": summarize_tool_data(tool_result.data),
                 },
                 error_context=error_context,
@@ -316,6 +392,7 @@ class AgentRunner:
             step_results=results,
             final_report=FinalReport(
                 success=False,
+                run_id=run_id,
                 task_input=_task_input(task, self.config.planner_backend),
                 plan_summary=plan.summary,
                 total_steps=0,
@@ -324,6 +401,8 @@ class AgentRunner:
                 planned_steps=0,
                 attempts=attempt,
             ),
+            run_id=run_id,
+            started_at=run_started_at,
         )
         run_result.final_report = build_final_report(run_result)
         run_result.final_report.attempts = attempt
@@ -382,7 +461,12 @@ def _fallback_plan() -> Plan:
     return Plan(summary="Planning failed.", steps=[])
 
 
-def _attempt_result_from_run_result(run_result: RunResult, attempt: int) -> AttemptResult:
+def _attempt_result_from_run_result(
+    run_result: RunResult,
+    attempt: int,
+    *,
+    duration_ms: int | None = None,
+) -> AttemptResult:
     completion_errors = [
         error
         for error in run_result.final_report.errors
@@ -396,4 +480,21 @@ def _attempt_result_from_run_result(run_result: RunResult, attempt: int) -> Atte
         success=run_result.final_report.success,
         errors=list(run_result.final_report.errors),
         completion_errors=completion_errors,
+        duration_ms=duration_ms,
+    )
+
+
+def _elapsed_ms(started: float) -> int:
+    return int((time.perf_counter() - started) * 1000)
+
+
+def _run_artifact_path(workspace_root: Path, run_id: str) -> Path:
+    return workspace_root / ".lca" / "runs" / run_id / "result.json"
+
+
+def _write_run_artifact(result: RunResult, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(result.to_dict(), ensure_ascii=False, indent=2),
+        encoding="utf-8",
     )

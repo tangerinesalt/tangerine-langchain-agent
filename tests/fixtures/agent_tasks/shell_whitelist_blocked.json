@@ -1,0 +1,23 @@
+{
+  "id": "shell-whitelist-blocked",
+  "task": "try to run a blocked shell command",
+  "workspace_fixture": "tests/fixtures/agent_tasks/fixtures/empty",
+  "allowed_shell_commands": ["rg"],
+  "max_replans": 0,
+  "expected_success": false,
+  "expected_actions": ["run_command"],
+  "expected_attempts": 1,
+  "expected_error_types": ["ToolExecutionError"],
+  "plans": [
+    {
+      "summary": "Run a blocked command.",
+      "steps": [
+        {
+          "action": "run_command",
+          "description": "Attempt a command outside the whitelist.",
+          "arguments": {"argv": ["python", "-c", "print('blocked')"]}
+        }
+      ]
+    }
+  ]
+}

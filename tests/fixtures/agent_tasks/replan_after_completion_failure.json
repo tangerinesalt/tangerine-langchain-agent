@@ -1,0 +1,45 @@
+{
+  "id": "replan-after-completion-failure",
+  "task": "print the expected marker",
+  "workspace_fixture": "tests/fixtures/agent_tasks/fixtures/empty",
+  "allowed_shell_commands": ["python"],
+  "max_replans": 1,
+  "expected_success": true,
+  "expected_actions": ["run_command"],
+  "expected_attempts": 2,
+  "expected_event_types": ["replan_requested"],
+  "plans": [
+    {
+      "summary": "Print the wrong marker.",
+      "steps": [
+        {
+          "action": "run_command",
+          "description": "Print a wrong marker.",
+          "arguments": {"argv": ["python", "-c", "print('wrong')"]}
+        }
+      ],
+      "completion_checks": [
+        {
+          "check_type": "shell_output_contains",
+          "arguments": {"action": "run_command", "text": "expected-marker"}
+        }
+      ]
+    },
+    {
+      "summary": "Print the expected marker.",
+      "steps": [
+        {
+          "action": "run_command",
+          "description": "Print the expected marker.",
+          "arguments": {"argv": ["python", "-c", "print('expected-marker')"]}
+        }
+      ],
+      "completion_checks": [
+        {
+          "check_type": "shell_output_contains",
+          "arguments": {"action": "run_command", "text": "expected-marker"}
+        }
+      ]
+    }
+  ]
+}
