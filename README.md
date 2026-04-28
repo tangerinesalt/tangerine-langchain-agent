@@ -173,6 +173,74 @@ python -m ruff check src tests
 python -m mypy src
 ```
 
+## Agent Eval Harness 使用方式
+
+Agent Eval Harness 用来验证代理能力是否回归，不是日常执行任务的主入口。
+
+推荐使用时机：
+
+- 修改 planner prompt、plan validator、runner、completion validator 后
+- 新增或调整 action / tool schema 后
+- 修复一个代理行为 bug 后，将该 bug 固化为 eval case
+- 阶段性提交前，用固定样本确认代理行为仍然稳定
+
+### 运行完整评测
+
+```powershell
+lc-agent eval run
+```
+
+默认会读取 `tests/fixtures/agent_tasks` 下的 eval case，并将报告写入：
+
+```text
+.lca/evals/latest.json
+```
+
+需要机器可读输出时使用：
+
+```powershell
+lc-agent eval run --json
+```
+
+### 生成经验归档
+
+```powershell
+lc-agent eval archive
+```
+
+默认会生成：
+
+```text
+.lca/evals/experience/records.jsonl
+.lca/evals/experience/index.json
+.lca/evals/experience-report.json
+```
+
+经验归档只用于复盘和查询，不会进入默认 planner / runner 执行链路。
+
+### 指定路径运行
+
+从项目根目录外运行时，可以显式指定路径：
+
+```powershell
+lc-agent eval run --project-root C:\Users\tangerine\.langchain-code-agent --cases tests/fixtures/agent_tasks --workspaces .lca/evals/workspaces --report .lca/evals/latest.json
+```
+
+```powershell
+lc-agent eval archive --project-root C:\Users\tangerine\.langchain-code-agent --cases tests/fixtures/agent_tasks --workspaces .lca/evals/experience-workspaces --archive-dir .lca/evals/experience --report .lca/evals/experience-report.json
+```
+
+### 查看失败原因
+
+如果 eval 失败，优先查看报告中的：
+
+- `failed_cases`
+- `case_results[*].failure_reasons`
+- `case_results[*].observed_failure_type`
+- `case_results[*].artifact_path`
+
+`artifact_path` 指向对应 run 的 `result.json`，里面包含 plan、events、tool calls、errors 和 completion errors。
+
 ## 文档
 
 - 架构说明：[docs/architecture.md](./docs/architecture.md)

@@ -18,7 +18,7 @@ report.
 ## Build an Archive
 
 ```powershell
-python -c "from pathlib import Path; from langchain_code_agent.evals.experience import archive_eval_suite; project=Path.cwd(); case_paths=sorted((project/'tests/fixtures/agent_tasks').glob('*.json')); archive=archive_eval_suite(case_paths, project_root=project, workspaces_root=project/'.lca/evals/experience-workspaces', archive_dir=project/'.lca/evals/experience', report_path=project/'.lca/evals/experience-report.json'); print(archive.index.model_dump_json(indent=2))"
+lc-agent eval archive --json
 ```
 
 The command writes:
@@ -26,6 +26,18 @@ The command writes:
 - `.lca/evals/experience/records.jsonl`
 - `.lca/evals/experience/index.json`
 - `.lca/evals/experience-report.json`
+
+## Run the Eval Suite
+
+```powershell
+lc-agent eval run --json
+```
+
+Use explicit paths when running from outside the project root:
+
+```powershell
+lc-agent eval run --project-root C:\Users\tangerine\.langchain-code-agent --cases tests/fixtures/agent_tasks --workspaces .lca/evals/workspaces --report .lca/evals/latest.json --json
+```
 
 ## Query Records
 

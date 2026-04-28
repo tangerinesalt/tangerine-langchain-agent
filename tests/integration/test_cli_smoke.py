@@ -173,3 +173,76 @@ def test_cli_doctor_uses_global_default_profile_while_config_stays_workspace_onl
     assert payload["model"] == "qwen/qwen3.5-9b"
     assert payload["shell_timeout_seconds"] == 45
     assert payload["model_sources"]["model_api_key_source"].startswith("auth:")
+
+
+def test_cli_eval_run_outputs_report(tmp_path: Path) -> None:
+    report_path = tmp_path / "latest.json"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "langchain_code_agent",
+            "eval",
+            "run",
+            "--project-root",
+            str(PROJECT_ROOT),
+            "--cases",
+            "tests/fixtures/agent_tasks/create_file_success.json",
+            "--workspaces",
+            str(tmp_path / "workspaces"),
+            "--report",
+            str(report_path),
+            "--json",
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["schema_version"] == "eval-report-v3"
+    assert payload["total_cases"] == 1
+    assert payload["passed_cases"] == 1
+    assert payload["case_results"][0]["id"] == "create-file-success"
+    assert report_path.exists()
+
+
+def test_cli_eval_archive_outputs_index(tmp_path: Path) -> None:
+    report_path = tmp_path / "experience-report.json"
+    archive_dir = tmp_path / "experience"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "langchain_code_agent",
+            "eval",
+            "archive",
+            "--project-root",
+            str(PROJECT_ROOT),
+            "--cases",
+            "tests/fixtures/agent_tasks/fix_tests_adds_verification.json",
+            "--workspaces",
+            str(tmp_path / "workspaces"),
+            "--archive-dir",
+            str(archive_dir),
+            "--report",
+            str(report_path),
+            "--json",
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["report"]["passed_cases"] == 1
+    assert payload["index"]["schema_version"] == "agent-experience-index-v1"
+    assert payload["index"]["record_count"] == 1
+    assert "append_run_tests_verification" in payload["index"]["by_repair_code"]
+    assert report_path.exists()
+    assert (archive_dir / "records.jsonl").exists()
+    assert (archive_dir / "index.json").exists()
