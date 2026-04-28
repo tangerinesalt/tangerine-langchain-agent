@@ -6,8 +6,9 @@
   "expected_success": false,
   "expected_actions": [],
   "expected_attempts": 1,
-  "expected_error_types": ["ValueError"],
+  "expected_error_types": ["PlanValidationError"],
   "expected_event_types": ["planning_failed"],
+  "expected_failure_code": "missing_workspace_path",
   "plans": [
     {
       "summary": "Read missing file.",

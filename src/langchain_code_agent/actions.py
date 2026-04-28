@@ -109,7 +109,7 @@ def execute_action(
 def validate_action_arguments(action: str, arguments: dict[str, object]) -> str | None:
     spec = get_action_spec(action)
     if spec is None:
-        return None
+        return f"Unsupported action: {action}"
 
     unknown_arguments = sorted(set(arguments) - spec.allowed_arguments)
     if unknown_arguments:

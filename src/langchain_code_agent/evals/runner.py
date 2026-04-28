@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import time
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -113,6 +114,9 @@ def _evaluate_case_result(
     actions = [step.action for step in result.step_results]
     event_types = [event.event_type for event in result.events]
     error_types = _collect_error_types(result)
+    failure_code = _first_failure_code(result)
+    repair_code = _first_repair_code(result)
+    planning_repaired = repair_code is not None
     attempts = result.final_report.attempts
     failure_reasons: list[str] = []
 
@@ -125,6 +129,18 @@ def _evaluate_case_result(
         failure_reasons.append(f"Expected actions {case.expected_actions}, got {actions}.")
     if case.expected_attempts is not None and attempts != case.expected_attempts:
         failure_reasons.append(f"Expected attempts {case.expected_attempts}, got {attempts}.")
+    if case.expected_failure_code is not None and failure_code != case.expected_failure_code:
+        failure_reasons.append(
+            f"Expected failure code {case.expected_failure_code}, got {failure_code}."
+        )
+    if case.expected_repaired is not None and planning_repaired is not case.expected_repaired:
+        failure_reasons.append(
+            f"Expected planning_repaired {case.expected_repaired}, got {planning_repaired}."
+        )
+    if case.expected_repair_code is not None and repair_code != case.expected_repair_code:
+        failure_reasons.append(
+            f"Expected repair code {case.expected_repair_code}, got {repair_code}."
+        )
 
     _check_expected_file_changes(case, result, failure_reasons)
     _check_expected_files(case, workspace, failure_reasons)
@@ -151,6 +167,9 @@ def _evaluate_case_result(
         failure_type=_classify_failure(error_types, event_types, failure_reasons),
         observed_failure_type=_classify_observed_failure(error_types, event_types),
         failure_stage=_first_failure_stage(result),
+        failure_code=failure_code,
+        planning_repaired=planning_repaired,
+        repair_code=repair_code,
         steps=len(result.step_results),
         tool_calls=len(result.final_report.tool_calls),
         attempts=attempts,
@@ -235,9 +254,31 @@ def _first_failure_stage(result: RunResult) -> str | None:
     return None
 
 
+def _first_failure_code(result: RunResult) -> str | None:
+    for error in result.final_report.errors:
+        if error.failure_code is not None:
+            return error.failure_code
+    for attempt in result.attempts:
+        for error in [*attempt.errors, *attempt.completion_errors]:
+            if error.failure_code is not None:
+                return error.failure_code
+    return None
+
+
+def _first_repair_code(result: RunResult) -> str | None:
+    for event in result.events:
+        if event.event_type != "plan_repaired":
+            continue
+        repair_code = event.details.get("repair_code")
+        if repair_code is not None:
+            return str(repair_code)
+    return None
+
+
 def _build_report(*, started_at: str, case_results: list[EvalCaseResult]) -> EvalReport:
     total_cases = len(case_results)
     passed_cases = sum(1 for result in case_results if result.passed)
+    repair_cases = [result for result in case_results if result.planning_repaired]
     return EvalReport(
         eval_id=uuid4().hex,
         started_at=started_at,
@@ -262,6 +303,21 @@ def _build_report(*, started_at: str, case_results: list[EvalCaseResult]) -> Eva
         planning_failure_rate=_rate(
             sum(1 for result in case_results if "planning_failed" in result.event_types),
             total_cases,
+        ),
+        plan_repair_success_rate=_rate(
+            sum(1 for result in repair_cases if result.agent_success),
+            len(repair_cases),
+        ),
+        failure_codes=_count_items(
+            result.failure_code for result in case_results if result.failure_code
+        ),
+        planning_failure_codes=_count_items(
+            result.failure_code
+            for result in case_results
+            if result.failure_code and "planning_failed" in result.event_types
+        ),
+        repair_codes=_count_items(
+            result.repair_code for result in case_results if result.repair_code
         ),
         case_results=case_results,
     )
@@ -306,3 +362,11 @@ def _rate(count: int, total: int) -> float:
     if total == 0:
         return 0.0
     return count / total
+
+
+def _count_items(items: Iterable[str]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        key = str(item)
+        counts[key] = counts.get(key, 0) + 1
+    return counts

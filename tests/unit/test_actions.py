@@ -23,9 +23,11 @@ def test_action_names_include_expected_entries() -> None:
 def test_validate_action_arguments_uses_registry_rules() -> None:
     missing = validate_action_arguments("write_file", {"path": "notes.txt"})
     unknown = validate_action_arguments("list_files", {"limit": 10, "path": "."})
+    unsupported = validate_action_arguments("edit_everything", {})
 
     assert "missing required arguments" in str(missing)
     assert "does not accept arguments" in str(unknown)
+    assert "Unsupported action" in str(unsupported)
 
 
 def test_action_argument_schemas_text_is_generated_from_registry() -> None:

@@ -1,0 +1,26 @@
+{
+  "id": "fix-tests-adds-verification",
+  "task": "Fix the failing tests in this workspace.",
+  "workspace_fixture": "tests/fixtures/agent_tasks/fixtures/empty",
+  "test_command": "python -c \"print('ok')\"",
+  "allowed_shell_commands": ["python"],
+  "max_replans": 0,
+  "expected_success": true,
+  "expected_actions": ["write_file", "run_tests"],
+  "expected_attempts": 1,
+  "expected_event_types": ["plan_repaired"],
+  "expected_repaired": true,
+  "expected_repair_code": "append_run_tests_verification",
+  "plans": [
+    {
+      "summary": "Edit but forget final verification.",
+      "steps": [
+        {
+          "action": "write_file",
+          "description": "Write a fixed file.",
+          "arguments": {"path": "fixed.txt", "content": "ok"}
+        }
+      ]
+    }
+  ]
+}

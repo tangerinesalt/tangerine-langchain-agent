@@ -1,6 +1,7 @@
 import pytest
 
 from langchain_code_agent.agent.plan_validator import validate_plan, validate_task_specific_plan
+from langchain_code_agent.agent.planning_failures import PlanValidationError
 from langchain_code_agent.models.plan import CompletionCheck, Plan, PlanStep
 
 
@@ -62,6 +63,24 @@ def test_validate_plan_rejects_reading_file_not_in_workspace_or_prior_steps() ->
 
     with pytest.raises(ValueError, match="not available in the workspace"):
         validate_plan(plan, existing_paths={"test_ok.py"})
+
+
+def test_validate_plan_classifies_invalid_action() -> None:
+    plan = Plan(
+        summary="Invent a tool.",
+        steps=[
+            PlanStep(
+                action="edit_everything",
+                description="Use an unsupported tool.",
+                arguments={},
+            )
+        ],
+    )
+
+    with pytest.raises(PlanValidationError) as exc_info:
+        validate_plan(plan, existing_paths=set())
+
+    assert exc_info.value.failure_code == "invalid_action"
 
 
 def test_validate_plan_rejects_completion_check_for_missing_action() -> None:
@@ -134,6 +153,29 @@ def test_validate_task_specific_plan_rejects_fix_failing_tests_without_edit_step
 
     with pytest.raises(ValueError, match="must include at least one edit step"):
         validate_task_specific_plan(plan, task_text="Fix the failing tests in this workspace.")
+
+
+def test_validate_task_specific_plan_classifies_missing_verification() -> None:
+    plan = Plan(
+        summary="Edit without verification.",
+        steps=[
+            PlanStep(
+                action="replace_in_file",
+                description="Fix the implementation.",
+                arguments={
+                    "path": "math_utils.py",
+                    "old_text": "return value + factor + offset",
+                    "new_text": "return value * factor + offset",
+                },
+            )
+        ],
+    )
+
+    with pytest.raises(PlanValidationError) as exc_info:
+        validate_task_specific_plan(plan, task_text="Fix the failing tests in this workspace.")
+
+    assert exc_info.value.failure_code == "missing_validation_step"
+    assert exc_info.value.repairable is True
 
 
 def test_validate_task_specific_plan_rejects_verification_before_edit() -> None:

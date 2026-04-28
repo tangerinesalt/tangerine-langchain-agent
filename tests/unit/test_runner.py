@@ -547,6 +547,40 @@ def test_runner_retries_once_after_planning_failure(tmp_path: Path) -> None:
     assert any(event.event_type == "replan_requested" for event in result.events)
 
 
+def test_runner_repairs_fix_failing_tests_plan_with_missing_verification(
+    tmp_path: Path,
+) -> None:
+    config = AgentConfig(
+        workspace_root=tmp_path,
+        planner_backend="noop",
+        shell_timeout_seconds=5,
+        test_command="python -c \"print('ok')\"",
+        ignore_patterns=[],
+        allowed_shell_commands=["python"],
+    )
+    runner = AgentRunner(config)
+    runner.planner = _StubPlanner(
+        Plan(
+            summary="Edit only.",
+            steps=[
+                PlanStep(
+                    action="write_file",
+                    description="Write a fixed file.",
+                    arguments={"path": "fixed.txt", "content": "ok"},
+                )
+            ],
+        )
+    )
+
+    result = runner.run("Fix the failing tests in this workspace.", execution_mode="execute")
+
+    assert result.final_report.success is True
+    assert [step.action for step in result.step_results] == ["write_file", "run_tests"]
+    assert any(event.event_type == "plan_repaired" for event in result.events)
+    repair_event = next(event for event in result.events if event.event_type == "plan_repaired")
+    assert repair_event.details["repair_code"] == "append_run_tests_verification"
+
+
 def test_runner_rejects_semantically_invalid_plan_before_execution(tmp_path: Path) -> None:
     config = AgentConfig(
         workspace_root=tmp_path,
@@ -575,6 +609,7 @@ def test_runner_rejects_semantically_invalid_plan_before_execution(tmp_path: Pat
     assert result.step_results == []
     assert any(event.event_type == "planning_failed" for event in result.events)
     assert result.final_report.errors[0].stage == "validate_plan"
+    assert result.final_report.errors[0].failure_code == "missing_workspace_path"
     assert result.final_report.errors[0].traceback
 
 

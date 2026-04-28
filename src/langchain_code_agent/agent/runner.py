@@ -11,8 +11,10 @@ from uuid import uuid4
 
 from langchain_code_agent.actions import ActionRuntime
 from langchain_code_agent.agent.completion_validator import validate_completion
+from langchain_code_agent.agent.plan_repair import PlanRepairResult, repair_plan
 from langchain_code_agent.agent.plan_validator import validate_plan, validate_task_specific_plan
 from langchain_code_agent.agent.planner import build_planner
+from langchain_code_agent.agent.planning_failures import classify_planning_exception
 from langchain_code_agent.agent.replan_context import build_replan_context
 from langchain_code_agent.agent.run_reporter import (
     RunReporter,
@@ -198,13 +200,20 @@ class AgentRunner:
             planning_stage = "validate_plan"
             plan = validate_plan(plan, existing_paths=set(self.repository.snapshot_file_state()))
             planning_stage = "validate_task_specific_plan"
-            plan = validate_task_specific_plan(plan, task_text=task.goal)
+            plan, repair_result = _validate_or_repair_task_specific_plan(
+                plan,
+                task_text=task.goal,
+                existing_paths=set(self.repository.snapshot_file_state()),
+            )
         except Exception as exc:
             planning_duration_ms = _elapsed_ms(planning_started)
+            planning_failure = classify_planning_exception(exc, stage=planning_stage)
             planning_error_context = ErrorContext(
                 error_type=type(exc).__name__,
                 message=str(exc),
                 stage=planning_stage,
+                failure_code=planning_failure.code,
+                repairable=planning_failure.repairable,
                 traceback=traceback.format_exc(),
             )
             self.reporter.record_event(
@@ -218,6 +227,8 @@ class AgentRunner:
                     "duration_ms": planning_duration_ms,
                     "planner_output": planner_output,
                     "error_type": type(exc).__name__,
+                    "failure_code": planning_failure.code,
+                    "repairable": planning_failure.repairable,
                 },
                 error_context=planning_error_context,
             )
@@ -253,6 +264,19 @@ class AgentRunner:
             return failed_result
 
         planning_duration_ms = _elapsed_ms(planning_started)
+        if repair_result is not None:
+            self.reporter.record_event(
+                events,
+                event_type="plan_repaired",
+                level="INFO",
+                message="Plan was repaired by a deterministic local rule.",
+                details={
+                    "attempt": attempt,
+                    "repair_code": repair_result.repair_code,
+                    "repaired_failure_code": repair_result.repaired_failure_code,
+                    "reason": repair_result.reason,
+                },
+            )
         self.reporter.record_event(
             events,
             event_type="plan_created",
@@ -459,6 +483,32 @@ def _task_input(task: Task, planner_backend: str) -> dict[str, Any]:
 
 def _fallback_plan() -> Plan:
     return Plan(summary="Planning failed.", steps=[])
+
+
+def _validate_or_repair_task_specific_plan(
+    plan: Plan,
+    *,
+    task_text: str,
+    existing_paths: set[str],
+) -> tuple[Plan, PlanRepairResult | None]:
+    try:
+        return validate_task_specific_plan(plan, task_text=task_text), None
+    except Exception as exc:
+        planning_failure = classify_planning_exception(
+            exc,
+            stage="validate_task_specific_plan",
+        )
+        repair_result = repair_plan(
+            plan,
+            task_text=task_text,
+            failure_code=planning_failure.code,
+        )
+        if repair_result is None:
+            raise
+
+        repaired_plan = validate_plan(repair_result.plan, existing_paths=existing_paths)
+        repaired_plan = validate_task_specific_plan(repaired_plan, task_text=task_text)
+        return repaired_plan, repair_result
 
 
 def _attempt_result_from_run_result(

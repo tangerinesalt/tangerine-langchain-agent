@@ -38,11 +38,14 @@ class EvalCase(BaseModel):
     expected_files: list[ExpectedFileState] = Field(default_factory=list)
     expected_error_types: list[str] = Field(default_factory=list)
     expected_event_types: list[str] = Field(default_factory=list)
+    expected_failure_code: str | None = None
+    expected_repaired: bool | None = None
+    expected_repair_code: str | None = None
     expected_attempts: int | None = None
 
 
 class EvalCaseResult(BaseModel):
-    schema_version: str = "eval-case-result-v1"
+    schema_version: str = "eval-case-result-v2"
     id: str
     run_id: str
     artifact_path: str | None = None
@@ -52,6 +55,9 @@ class EvalCaseResult(BaseModel):
     failure_type: str | None = None
     observed_failure_type: str | None = None
     failure_stage: str | None = None
+    failure_code: str | None = None
+    planning_repaired: bool = False
+    repair_code: str | None = None
     steps: int
     tool_calls: int
     attempts: int
@@ -63,7 +69,7 @@ class EvalCaseResult(BaseModel):
 
 
 class EvalReport(BaseModel):
-    schema_version: str = "eval-report-v1"
+    schema_version: str = "eval-report-v2"
     eval_id: str
     started_at: str
     total_cases: int
@@ -76,4 +82,8 @@ class EvalReport(BaseModel):
     tool_error_rate: float
     completion_failure_rate: float
     planning_failure_rate: float
+    plan_repair_success_rate: float
+    failure_codes: dict[str, int] = Field(default_factory=dict)
+    planning_failure_codes: dict[str, int] = Field(default_factory=dict)
+    repair_codes: dict[str, int] = Field(default_factory=dict)
     case_results: list[EvalCaseResult]
