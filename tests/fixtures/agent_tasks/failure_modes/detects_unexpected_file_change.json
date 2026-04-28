@@ -1,0 +1,38 @@
+{
+  "id": "failure-detects-unexpected-file-change",
+  "task": "Create expected.txt and do not change any other files.",
+  "workspace_fixture": "tests/fixtures/agent_tasks/fixtures/empty",
+  "max_replans": 0,
+  "expected_success": false,
+  "expected_actions": ["write_file", "write_file"],
+  "expected_attempts": 1,
+  "expected_error_types": ["IncompleteTaskResult"],
+  "expected_event_types": ["completion_validation_failed"],
+  "expected_file_changes": [
+    {"path": "expected.txt", "change_type": "added"},
+    {"path": "extra.txt", "change_type": "added"}
+  ],
+  "plans": [
+    {
+      "summary": "Create the requested file and one unexpected file.",
+      "steps": [
+        {
+          "action": "write_file",
+          "description": "Write the expected file.",
+          "arguments": {"path": "expected.txt", "content": "ok"}
+        },
+        {
+          "action": "write_file",
+          "description": "Write an unexpected extra file.",
+          "arguments": {"path": "extra.txt", "content": "unexpected"}
+        }
+      ],
+      "completion_checks": [
+        {
+          "check_type": "no_unexpected_file_changes",
+          "arguments": {"paths": ["expected.txt"]}
+        }
+      ]
+    }
+  ]
+}

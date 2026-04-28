@@ -1,0 +1,27 @@
+{
+  "id": "failure-detects-failed-tests",
+  "task": "Run the configured failing test suite.",
+  "workspace_fixture": "tests/fixtures/agent_tasks/fixtures/failing_tests",
+  "test_command": "python -m pytest -q",
+  "allowed_shell_commands": ["python", "pytest"],
+  "max_replans": 0,
+  "expected_success": false,
+  "expected_actions": ["run_tests"],
+  "expected_attempts": 1,
+  "expected_error_types": ["ToolExecutionError"],
+  "plans": [
+    {
+      "summary": "Run the failing tests.",
+      "steps": [
+        {
+          "action": "run_tests",
+          "description": "Run the configured test command.",
+          "arguments": {}
+        }
+      ],
+      "completion_checks": [
+        {"check_type": "tests_passed", "arguments": {}}
+      ]
+    }
+  ]
+}

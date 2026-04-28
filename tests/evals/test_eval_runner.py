@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from langchain_code_agent.evals.runner import load_eval_case, run_eval_case, run_eval_suite
+from langchain_code_agent.models.plan import Plan, PlanStep
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CASE_DIR = PROJECT_ROOT / "tests" / "fixtures" / "agent_tasks"
@@ -13,6 +14,15 @@ def test_load_eval_case_reads_sample_definition() -> None:
     assert case.id == "create-file-success"
     assert case.expected_success is True
     assert case.plans[0].steps[0].action == "write_file"
+
+
+def test_load_eval_case_supports_real_planner_sample_metadata() -> None:
+    case = load_eval_case(CASE_DIR / "real_planner" / "create_snake_game.json")
+
+    assert case.id == "real-planner-create-snake-game"
+    assert case.planner_backend == "langchain"
+    assert case.plans == []
+    assert case.expected_files[0].content_contains == ["game.js", "style.css"]
 
 
 def test_run_eval_case_checks_expected_file_state(tmp_path: Path) -> None:
@@ -32,6 +42,76 @@ def test_run_eval_case_checks_expected_file_state(tmp_path: Path) -> None:
     assert Path(result.artifact_path).exists()
     assert result.actions == ["write_file"]
     assert result.failure_reasons == []
+
+
+def test_run_eval_case_checks_expected_file_contains(tmp_path: Path) -> None:
+    real_case = load_eval_case(CASE_DIR / "real_planner" / "update_readme_section.json")
+    case = real_case.model_copy(
+        update={
+            "planner_backend": "noop",
+            "plans": [
+                Plan(
+                    summary="Update README.",
+                    steps=[
+                        PlanStep(
+                            action="insert_text",
+                            description="Add the eval harness section.",
+                            arguments={
+                                "path": "README.md",
+                                "anchor": "# Demo Project\n",
+                                "text": (
+                                    "\n## Agent Eval Harness\n"
+                                    "stable regression safety net\n"
+                                ),
+                                "position": "after",
+                            },
+                        )
+                    ],
+                )
+            ],
+        }
+    )
+
+    result = run_eval_case(
+        case,
+        project_root=PROJECT_ROOT,
+        workspaces_root=tmp_path,
+    )
+
+    assert result.passed is True
+    assert result.agent_success is True
+
+
+def test_failure_mode_detects_failed_tests(tmp_path: Path) -> None:
+    case = load_eval_case(CASE_DIR / "failure_modes" / "detects_failed_tests.json")
+
+    result = run_eval_case(
+        case,
+        project_root=PROJECT_ROOT,
+        workspaces_root=tmp_path,
+    )
+
+    assert result.passed is True
+    assert result.agent_success is False
+    assert result.observed_failure_type == "tool_error"
+    assert result.error_types == ["ToolExecutionError"]
+
+
+def test_failure_mode_detects_unexpected_file_change(tmp_path: Path) -> None:
+    case = load_eval_case(
+        CASE_DIR / "failure_modes" / "detects_unexpected_file_change.json"
+    )
+
+    result = run_eval_case(
+        case,
+        project_root=PROJECT_ROOT,
+        workspaces_root=tmp_path,
+    )
+
+    assert result.passed is True
+    assert result.agent_success is False
+    assert result.observed_failure_type == "completion_failure"
+    assert result.error_types == ["IncompleteTaskResult"]
 
 
 def test_run_eval_suite_generates_baseline_report(tmp_path: Path) -> None:

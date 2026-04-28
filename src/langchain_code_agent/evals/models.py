@@ -16,6 +16,7 @@ class ExpectedFileState(BaseModel):
     path: str
     exists: bool = True
     content: str | None = None
+    content_contains: list[str] = Field(default_factory=list)
 
 
 class EvalCase(BaseModel):
@@ -24,6 +25,9 @@ class EvalCase(BaseModel):
     workspace_fixture: str
     execution_mode: Literal["dry-run", "execute"] = "execute"
     planner_backend: Literal["noop", "langchain"] = "noop"
+    model_profile: str | None = None
+    model_config_path: str | None = None
+    auth_path: str | None = None
     shell_timeout_seconds: int = 10
     max_replans: int = 1
     test_command: str | None = None

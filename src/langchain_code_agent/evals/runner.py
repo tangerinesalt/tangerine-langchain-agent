@@ -33,15 +33,7 @@ def run_eval_case(
         project_root=project_root,
         workspaces_root=workspaces_root,
     )
-    config = AgentConfig(
-        workspace_root=workspace,
-        planner_backend=case.planner_backend,
-        shell_timeout_seconds=case.shell_timeout_seconds,
-        max_replans=case.max_replans,
-        test_command=case.test_command,
-        ignore_patterns=list(case.ignore_patterns),
-        allowed_shell_commands=list(case.allowed_shell_commands),
-    )
+    config = _build_case_config(case, workspace=workspace)
     runner = AgentRunner(config)
     if case.plans:
         runner.planner = _SequentialPlanner(case.plans)
@@ -102,6 +94,33 @@ def _prepare_workspace(
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(source, target)
     return target
+
+
+def _build_case_config(case: EvalCase, *, workspace: Path) -> AgentConfig:
+    if case.planner_backend == "langchain":
+        config = AgentConfig.from_sources(
+            workspace_root=workspace,
+            planner_backend=case.planner_backend,
+            model_profile=case.model_profile,
+            global_model_config_path=case.model_config_path,
+            auth_path=case.auth_path,
+        )
+        config.shell_timeout_seconds = case.shell_timeout_seconds
+        config.max_replans = case.max_replans
+        config.test_command = case.test_command
+        config.ignore_patterns = list(case.ignore_patterns)
+        config.allowed_shell_commands = list(case.allowed_shell_commands)
+        return config
+
+    return AgentConfig(
+        workspace_root=workspace,
+        planner_backend=case.planner_backend,
+        shell_timeout_seconds=case.shell_timeout_seconds,
+        max_replans=case.max_replans,
+        test_command=case.test_command,
+        ignore_patterns=list(case.ignore_patterns),
+        allowed_shell_commands=list(case.allowed_shell_commands),
+    )
 
 
 def _evaluate_case_result(
@@ -215,6 +234,14 @@ def _check_expected_files(
             content = path.read_text(encoding="utf-8")
             if content != expected.content:
                 failure_reasons.append(f"Unexpected content for {expected.path}.")
+                continue
+        if expected.exists and expected.content_contains:
+            content = path.read_text(encoding="utf-8")
+            for expected_text in expected.content_contains:
+                if expected_text not in content:
+                    failure_reasons.append(
+                        f"Expected {expected.path} to contain {expected_text!r}."
+                    )
 
 
 def _check_expected_items(

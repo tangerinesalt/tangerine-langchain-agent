@@ -1,0 +1,21 @@
+{
+  "id": "real-planner-create-snake-game",
+  "task": "Create a runnable Snake game project using native HTML, CSS, and JavaScript. Generate index.html, style.css, game.js, and README.md. The game must support arrow-key movement, pause/resume, restart, scoring, high score, food growth, and game-over handling. Do not use external CDN or network resources.",
+  "workspace_fixture": "tests/fixtures/agent_tasks/fixtures/empty",
+  "planner_backend": "langchain",
+  "execution_mode": "execute",
+  "max_replans": 1,
+  "expected_success": true,
+  "expected_file_changes": [
+    {"path": "index.html", "change_type": "added"},
+    {"path": "style.css", "change_type": "added"},
+    {"path": "game.js", "change_type": "added"},
+    {"path": "README.md", "change_type": "added"}
+  ],
+  "expected_files": [
+    {"path": "index.html", "exists": true, "content_contains": ["game.js", "style.css"]},
+    {"path": "style.css", "exists": true},
+    {"path": "game.js", "exists": true, "content_contains": ["keydown", "score"]},
+    {"path": "README.md", "exists": true, "content_contains": ["Snake"]}
+  ]
+}

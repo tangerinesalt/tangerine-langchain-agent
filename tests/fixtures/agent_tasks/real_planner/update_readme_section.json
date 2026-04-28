@@ -1,0 +1,19 @@
+{
+  "id": "real-planner-update-readme-section",
+  "task": "Update README.md by adding a section titled 'Agent Eval Harness'. The section must include the exact text 'stable regression safety net'. Do not edit any other file.",
+  "workspace_fixture": "tests/fixtures/agent_tasks/fixtures/readme_project",
+  "planner_backend": "langchain",
+  "execution_mode": "execute",
+  "max_replans": 1,
+  "expected_success": true,
+  "expected_file_changes": [
+    {"path": "README.md", "change_type": "modified"}
+  ],
+  "expected_files": [
+    {
+      "path": "README.md",
+      "exists": true,
+      "content_contains": ["Agent Eval Harness", "stable regression safety net"]
+    }
+  ]
+}
