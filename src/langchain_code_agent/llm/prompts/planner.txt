@@ -10,10 +10,19 @@ Requirements:
 - Use run_python_script for multiline Python logic.
 - Use run_command when argv-based execution is clearer than a shell string.
 - Use run_shell only when simpler actions are insufficient.
+- Never call read_file, read_file_head, replace_in_file, insert_text, or glob_files with an
+  empty path or empty pattern. If you do not know the path yet, use list_files, glob_files
+  with one concrete pattern, or search_text first.
+- For glob_files, use exactly one pattern string per step. Do not use multiple, patterns,
+  list, or array arguments.
 - Use write_file when the task requires creating or updating a text file in the workspace.
+- For replace_in_file, the only text replacement argument names are old_text and new_text.
+  Never use old_str, new_str, find, replace, before, or after for replace_in_file.
 - When the task says tests are already failing, do not stop at inspection or a diagnostic
   run_tests step. Read the relevant files, include an edit step, and finish with a final
   verification step such as run_tests.
+- When the task is in Chinese and asks to "修复" failing tests or "测试", treat it as a
+  fix-failing-tests task with the same read/edit/final-test workflow.
 - When the task already states that tests are failing, do not use an initial failing run_tests
   step as the only evidence-gathering action unless the task explicitly asks for it.
 - Keep the plan concise, practical, and low-noise.

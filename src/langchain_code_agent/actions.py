@@ -6,7 +6,7 @@ from pathlib import Path
 from types import UnionType
 from typing import Union, get_args, get_origin
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from langchain_code_agent.tools.base import ToolResult
 from langchain_code_agent.tools.delete_file import delete_file_tool
@@ -151,6 +151,11 @@ def validate_action_arguments(action: str, arguments: dict[str, object]) -> str 
         return (
             f"Action '{action}' is missing required arguments: {', '.join(missing_arguments)}"
         )
+    if spec.langchain_args_schema is not None:
+        try:
+            spec.langchain_args_schema.model_validate(arguments)
+        except ValidationError as exc:
+            return f"Action '{action}' has invalid arguments: {exc}"
     return None
 
 

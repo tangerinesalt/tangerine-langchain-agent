@@ -149,6 +149,38 @@ def _collapse_empty_write_file_into_script_output(
     return collapsed
 
 
+def _expand_multiple_glob_patterns(
+    steps: list[PlanStep],
+    context: PlanNormalizationContext,
+) -> list[PlanStep]:
+    del context
+    expanded: list[PlanStep] = []
+    for step in steps:
+        if step.action != "glob_files" or "pattern" in step.arguments:
+            expanded.append(step)
+            continue
+
+        raw_patterns = step.arguments.get("patterns", step.arguments.get("multiple"))
+        if not isinstance(raw_patterns, list):
+            expanded.append(step)
+            continue
+
+        for raw_pattern in raw_patterns:
+            if not isinstance(raw_pattern, str):
+                continue
+            pattern = raw_pattern.strip()
+            if not pattern:
+                continue
+            expanded.append(
+                PlanStep(
+                    action=step.action,
+                    description=f"{step.description.strip()} ({pattern})",
+                    arguments={"pattern": pattern},
+                )
+            )
+    return expanded
+
+
 def _inject_time_anchor_step(
     steps: list[PlanStep],
     context: PlanNormalizationContext,
@@ -188,6 +220,11 @@ def _normalize_step(step: PlanStep, *, workspace_root: Path) -> PlanStep:
             arguments["source_path"] = str(arguments.pop("src"))
         if "dst" in arguments and "destination_path" not in arguments:
             arguments["destination_path"] = str(arguments.pop("dst"))
+    if action == "replace_in_file":
+        if "old_str" in arguments and "old_text" not in arguments:
+            arguments["old_text"] = str(arguments.pop("old_str"))
+        if "new_str" in arguments and "new_text" not in arguments:
+            arguments["new_text"] = str(arguments.pop("new_str"))
     if action == "run_tests" and "path" in arguments and "working_directory" not in arguments:
         arguments["working_directory"] = str(arguments.pop("path"))
     if (
@@ -321,6 +358,7 @@ JSON_TEXT_REPAIR_RULES: tuple[JsonRepairRule, ...] = (
 
 PLAN_NORMALIZATION_RULES: tuple[PlanNormalizationRule, ...] = (
     _normalize_step_fields,
+    _expand_multiple_glob_patterns,
     _dedupe_steps,
     _collapse_empty_write_file_into_script_output,
     _inject_time_anchor_step,

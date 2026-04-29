@@ -155,6 +155,35 @@ def test_validate_task_specific_plan_rejects_fix_failing_tests_without_edit_step
         validate_task_specific_plan(plan, task_text="Fix the failing tests in this workspace.")
 
 
+def test_validate_task_specific_plan_detects_chinese_fix_tests_task() -> None:
+    plan = Plan(
+        summary="Only inspect and test.",
+        steps=[
+            PlanStep(
+                action="list_files",
+                description="List files.",
+                arguments={},
+            ),
+            PlanStep(
+                action="run_tests",
+                description="Run tests.",
+                arguments={},
+            ),
+        ],
+    )
+
+    with pytest.raises(PlanValidationError) as exc_info:
+        validate_task_specific_plan(
+            plan,
+            task_text=(
+                "修复当前 Python 项目中的 failing tests。"
+                "请先检查相关文件，修改代码后运行测试验证。"
+            ),
+        )
+
+    assert exc_info.value.failure_code == "missing_edit_step"
+
+
 def test_validate_task_specific_plan_classifies_missing_verification() -> None:
     plan = Plan(
         summary="Edit without verification.",

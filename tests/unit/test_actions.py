@@ -30,6 +30,13 @@ def test_validate_action_arguments_uses_registry_rules() -> None:
     assert "Unsupported action" in str(unsupported)
 
 
+def test_validate_action_arguments_rejects_empty_read_path() -> None:
+    error = validate_action_arguments("read_file", {"path": ""})
+
+    assert error is not None
+    assert "path" in error
+
+
 def test_action_argument_schemas_text_is_generated_from_registry() -> None:
     schemas = action_argument_schemas_text()
 

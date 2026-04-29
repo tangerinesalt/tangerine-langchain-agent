@@ -139,3 +139,51 @@ def test_apply_plan_normalization_rules_maps_file_alias_and_run_tests_path() -> 
 
     assert normalized.steps[0].arguments == {"path": "math_utils.py"}
     assert normalized.steps[1].arguments == {"working_directory": "."}
+
+
+def test_apply_plan_normalization_rules_maps_replace_text_aliases() -> None:
+    plan = Plan(
+        summary="Fix implementation.",
+        steps=[
+            PlanStep(
+                action="replace_in_file",
+                description="Fix arithmetic.",
+                arguments={
+                    "path": "app.py",
+                    "old_str": "return left - right",
+                    "new_str": "return left + right",
+                },
+            )
+        ],
+    )
+    task = Task(goal="fix failing tests", workspace_root=Path.cwd(), execution_mode="execute")
+
+    normalized = apply_plan_normalization_rules(plan, task=task, workspace_root=Path.cwd())
+
+    assert normalized.steps[0].arguments == {
+        "path": "app.py",
+        "old_text": "return left - right",
+        "new_text": "return left + right",
+    }
+
+
+def test_apply_plan_normalization_rules_expands_multiple_glob_patterns() -> None:
+    plan = Plan(
+        summary="Find files.",
+        steps=[
+            PlanStep(
+                action="glob_files",
+                description="Find likely files.",
+                arguments={"multiple": ["*.py", "tests/*.py"]},
+            )
+        ],
+    )
+    task = Task(goal="fix failing tests", workspace_root=Path.cwd(), execution_mode="execute")
+
+    normalized = apply_plan_normalization_rules(plan, task=task, workspace_root=Path.cwd())
+
+    assert [step.action for step in normalized.steps] == ["glob_files", "glob_files"]
+    assert [step.arguments for step in normalized.steps] == [
+        {"pattern": "*.py"},
+        {"pattern": "tests/*.py"},
+    ]

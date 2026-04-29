@@ -225,8 +225,15 @@ def _normalize_path(path: str) -> str:
 
 def is_fix_failing_tests_task(task_text: str) -> bool:
     lowered = task_text.lower()
-    fix_markers = ("fix", "repair", "resolve", "make ")
-    test_markers = ("failing test", "failing tests", "pytest", "tests", "test suite")
+    fix_markers = ("fix", "repair", "resolve", "make ", "修复", "解决")
+    test_markers = (
+        "failing test",
+        "failing tests",
+        "pytest",
+        "tests",
+        "test suite",
+        "测试",
+    )
     return any(marker in lowered for marker in fix_markers) and any(
         marker in lowered for marker in test_markers
     )

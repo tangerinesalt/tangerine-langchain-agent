@@ -12,7 +12,10 @@ class GetCurrentDateInput(BaseModel):
 
 
 class GlobFilesInput(BaseModel):
-    pattern: str = Field(description="Glob pattern relative to the workspace root.")
+    pattern: str = Field(
+        min_length=1,
+        description="Glob pattern relative to the workspace root.",
+    )
     limit: int = Field(default=200, ge=1, le=1000, description="Maximum files to return.")
 
 
@@ -27,11 +30,17 @@ class TreeViewInput(BaseModel):
 
 
 class ReadFileInput(BaseModel):
-    path: str = Field(description="Relative file path inside the workspace root.")
+    path: str = Field(
+        min_length=1,
+        description="Relative file path inside the workspace root.",
+    )
 
 
 class ReadFileHeadInput(BaseModel):
-    path: str = Field(description="Relative file path inside the workspace root.")
+    path: str = Field(
+        min_length=1,
+        description="Relative file path inside the workspace root.",
+    )
     start_line: int = Field(default=1, ge=1, description="1-based starting line number.")
     max_lines: int = Field(default=200, ge=1, le=2000, description="Maximum lines to return.")
 
