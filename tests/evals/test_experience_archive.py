@@ -16,6 +16,7 @@ def test_archive_eval_suite_writes_queryable_experience_records(tmp_path: Path) 
         CASE_DIR / "create_file_success.json",
         CASE_DIR / "fix_tests_adds_verification.json",
         CASE_DIR / "missing_file_rejected.json",
+        CASE_DIR / "failure_modes" / "classifies_provider_timeout.json",
     ]
 
     archive = archive_eval_suite(
@@ -26,8 +27,8 @@ def test_archive_eval_suite_writes_queryable_experience_records(tmp_path: Path) 
         report_path=tmp_path / "report.json",
     )
 
-    assert archive.report.total_cases == 3
-    assert archive.report.passed_cases == 3
+    assert archive.report.total_cases == 4
+    assert archive.report.passed_cases == 4
     assert archive.paths is not None
     records_path = Path(archive.paths.records_path)
     index_path = Path(archive.paths.index_path)
@@ -35,12 +36,13 @@ def test_archive_eval_suite_writes_queryable_experience_records(tmp_path: Path) 
     assert index_path.exists()
 
     records = load_experience_records(records_path)
-    assert len(records) == 3
-    assert archive.index.record_count == 3
+    assert len(records) == 4
+    assert archive.index.record_count == 4
     assert len(archive.index.by_outcome["success"]) == 2
-    assert len(archive.index.by_outcome["expected_failure"]) == 1
+    assert len(archive.index.by_outcome["expected_failure"]) == 2
     assert "write_file" in archive.index.by_action
     assert "missing_workspace_path" in archive.index.by_failure_code
+    assert "model_service" in archive.index.by_failure_origin
     assert "append_run_tests_verification" in archive.index.by_repair_code
 
     missing_file = query_experience_records(
@@ -49,6 +51,16 @@ def test_archive_eval_suite_writes_queryable_experience_records(tmp_path: Path) 
     )
     assert [record.case_id for record in missing_file] == ["missing-file-rejected"]
     assert missing_file[0].observed_failure_type == "planning_failure"
+    assert missing_file[0].failure_origin == "agent_capability"
+
+    provider_timeout = query_experience_records(
+        records,
+        failure_origin="model_service",
+    )
+    assert [record.case_id for record in provider_timeout] == [
+        "failure-classifies-provider-timeout"
+    ]
+    assert provider_timeout[0].failure_code == "provider_timeout"
 
     repaired = query_experience_records(
         records,
@@ -61,4 +73,4 @@ def test_archive_eval_suite_writes_queryable_experience_records(tmp_path: Path) 
     assert repaired[0].repair.actions_after_repair == ["write_file", "run_tests"]
 
     index_payload = json.loads(index_path.read_text(encoding="utf-8"))
-    assert index_payload["schema_version"] == "agent-experience-index-v1"
+    assert index_payload["schema_version"] == "agent-experience-index-v2"

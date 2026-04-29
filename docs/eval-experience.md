@@ -56,6 +56,10 @@ repairs = query_experience_records(
     records,
     repair_code="append_run_tests_verification",
 )
+provider_failures = query_experience_records(
+    records,
+    failure_origin="model_service",
+)
 ```
 
 ## Record Types

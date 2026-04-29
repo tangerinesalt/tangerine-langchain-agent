@@ -16,6 +16,7 @@ class ErrorContext:
     step_index: int | None = None
     stage: str | None = None
     failure_code: str | None = None
+    failure_origin: str | None = None
     repairable: bool = False
     traceback: str | None = None
 

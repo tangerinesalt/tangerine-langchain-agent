@@ -23,7 +23,7 @@ class ExperienceRepairRecord(BaseModel):
 
 
 class ExperienceRecord(BaseModel):
-    schema_version: str = "agent-experience-record-v1"
+    schema_version: str = "agent-experience-record-v2"
     id: str
     source: Literal["eval"] = "eval"
     source_report_id: str
@@ -43,6 +43,7 @@ class ExperienceRecord(BaseModel):
     observed_failure_type: str | None = None
     failure_stage: str | None = None
     failure_code: str | None = None
+    failure_origin: str | None = None
     error_types: list[str] = Field(default_factory=list)
     event_types: list[str] = Field(default_factory=list)
     repair: ExperienceRepairRecord | None = None
@@ -50,7 +51,7 @@ class ExperienceRecord(BaseModel):
 
 
 class ExperienceIndex(BaseModel):
-    schema_version: str = "agent-experience-index-v1"
+    schema_version: str = "agent-experience-index-v2"
     source_report_id: str
     source_report_schema_version: str
     record_count: int
@@ -59,6 +60,7 @@ class ExperienceIndex(BaseModel):
     by_action: dict[str, list[str]] = Field(default_factory=dict)
     by_failure_type: dict[str, list[str]] = Field(default_factory=dict)
     by_failure_code: dict[str, list[str]] = Field(default_factory=dict)
+    by_failure_origin: dict[str, list[str]] = Field(default_factory=dict)
     by_repair_code: dict[str, list[str]] = Field(default_factory=dict)
 
 
@@ -108,6 +110,8 @@ def build_experience_index(
             _add_index_ref(index.by_failure_type, record.observed_failure_type, record.id)
         if record.failure_code is not None:
             _add_index_ref(index.by_failure_code, record.failure_code, record.id)
+        if record.failure_origin is not None:
+            _add_index_ref(index.by_failure_origin, record.failure_origin, record.id)
         if record.repair is not None:
             _add_index_ref(index.by_repair_code, record.repair.repair_code, record.id)
     return index
@@ -152,6 +156,7 @@ def query_experience_records(
     action: str | None = None,
     failure_type: str | None = None,
     failure_code: str | None = None,
+    failure_origin: str | None = None,
     repair_code: str | None = None,
 ) -> list[ExperienceRecord]:
     matches: list[ExperienceRecord] = []
@@ -165,6 +170,8 @@ def query_experience_records(
         if failure_type is not None and record.observed_failure_type != failure_type:
             continue
         if failure_code is not None and record.failure_code != failure_code:
+            continue
+        if failure_origin is not None and record.failure_origin != failure_origin:
             continue
         if repair_code is not None and (
             record.repair is None or record.repair.repair_code != repair_code
@@ -219,6 +226,7 @@ def _build_record(
         observed_failure_type=result.observed_failure_type,
         failure_stage=result.failure_stage,
         failure_code=result.failure_code,
+        failure_origin=result.failure_origin,
         error_types=list(result.error_types),
         event_types=list(result.event_types),
         repair=_build_repair_record(result),

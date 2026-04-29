@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field
 
 from langchain_code_agent.models.plan import Plan
 
+FailureOrigin = Literal["agent_capability", "model_service", "unknown_runtime"]
+
 
 class ExpectedFileChange(BaseModel):
     path: str
@@ -17,6 +19,11 @@ class ExpectedFileState(BaseModel):
     exists: bool = True
     content: str | None = None
     content_contains: list[str] = Field(default_factory=list)
+
+
+class SimulatedPlannerError(BaseModel):
+    error_type: str = "RuntimeError"
+    message: str
 
 
 class EvalCase(BaseModel):
@@ -36,6 +43,7 @@ class EvalCase(BaseModel):
         default_factory=lambda: ["python", "pytest", "rg", "git"]
     )
     plans: list[Plan] = Field(default_factory=list)
+    simulated_planner_error: SimulatedPlannerError | None = None
     expected_success: bool
     expected_actions: list[str] = Field(default_factory=list)
     expected_file_changes: list[ExpectedFileChange] = Field(default_factory=list)
@@ -43,13 +51,14 @@ class EvalCase(BaseModel):
     expected_error_types: list[str] = Field(default_factory=list)
     expected_event_types: list[str] = Field(default_factory=list)
     expected_failure_code: str | None = None
+    expected_failure_origin: FailureOrigin | None = None
     expected_repaired: bool | None = None
     expected_repair_code: str | None = None
     expected_attempts: int | None = None
 
 
 class EvalCaseResult(BaseModel):
-    schema_version: str = "eval-case-result-v3"
+    schema_version: str = "eval-case-result-v4"
     id: str
     run_id: str
     artifact_path: str | None = None
@@ -60,6 +69,7 @@ class EvalCaseResult(BaseModel):
     observed_failure_type: str | None = None
     failure_stage: str | None = None
     failure_code: str | None = None
+    failure_origin: FailureOrigin | None = None
     planning_repaired: bool = False
     repair_code: str | None = None
     steps: int
@@ -73,7 +83,7 @@ class EvalCaseResult(BaseModel):
 
 
 class EvalReport(BaseModel):
-    schema_version: str = "eval-report-v3"
+    schema_version: str = "eval-report-v4"
     eval_id: str
     started_at: str
     total_cases: int
@@ -89,7 +99,11 @@ class EvalReport(BaseModel):
     incomplete_task_rate: float
     planning_failure_rate: float
     plan_repair_success_rate: float
+    model_service_failure_rate: float
+    agent_capability_failure_rate: float
     failure_codes: dict[str, int] = Field(default_factory=dict)
+    failure_origins: dict[str, int] = Field(default_factory=dict)
     planning_failure_codes: dict[str, int] = Field(default_factory=dict)
+    planning_failure_origins: dict[str, int] = Field(default_factory=dict)
     repair_codes: dict[str, int] = Field(default_factory=dict)
     case_results: list[EvalCaseResult]

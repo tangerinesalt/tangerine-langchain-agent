@@ -1,0 +1,17 @@
+{
+  "id": "failure-classifies-provider-timeout",
+  "task": "Simulate a planner provider timeout.",
+  "workspace_fixture": "tests/fixtures/agent_tasks/fixtures/empty",
+  "max_replans": 0,
+  "expected_success": false,
+  "expected_actions": [],
+  "expected_attempts": 1,
+  "expected_error_types": ["RuntimeError"],
+  "expected_event_types": ["planning_failed"],
+  "expected_failure_code": "provider_timeout",
+  "expected_failure_origin": "model_service",
+  "simulated_planner_error": {
+    "error_type": "RuntimeError",
+    "message": "Provider returned error with status code 524 gateway timeout."
+  }
+}

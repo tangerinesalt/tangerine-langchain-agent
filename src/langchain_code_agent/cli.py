@@ -239,6 +239,7 @@ def _format_eval_report(report: EvalReport, *, report_path: Path) -> str:
             f"Success rate: {report.success_rate:.3f}",
             f"Replan rate: {report.replan_rate:.3f}",
             f"Completion failure rate: {report.completion_failure_rate:.3f}",
+            f"Planning failure origins: {report.planning_failure_origins}",
             f"Planning failure codes: {report.planning_failure_codes}",
             f"Repair codes: {report.repair_codes}",
             f"Report path: {report_path}",
@@ -255,6 +256,7 @@ def _format_eval_archive(payload: dict[str, Any]) -> str:
         f"Eval report: {report['passed_cases']}/{report['total_cases']} passed",
         f"Index schema: {index['schema_version']}",
         f"Outcomes: {index['by_outcome']}",
+        f"Failure origins: {index['by_failure_origin']}",
         f"Failure codes: {index['by_failure_code']}",
         f"Repair codes: {index['by_repair_code']}",
     ]

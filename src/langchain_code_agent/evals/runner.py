@@ -6,14 +6,26 @@ import time
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 from langchain_code_agent.agent.runner import AgentRunner
 from langchain_code_agent.agent_config import AgentConfig
-from langchain_code_agent.evals.models import EvalCase, EvalCaseResult, EvalReport
+from langchain_code_agent.evals.models import (
+    EvalCase,
+    EvalCaseResult,
+    EvalReport,
+    FailureOrigin,
+)
 from langchain_code_agent.models.plan import Plan
 from langchain_code_agent.models.result import RunResult
 from langchain_code_agent.models.task import Task
+
+_SIMULATED_EXCEPTIONS: dict[str, type[Exception]] = {
+    "RuntimeError": RuntimeError,
+    "TimeoutError": TimeoutError,
+    "ValueError": ValueError,
+}
 
 
 def load_eval_case(path: str | Path) -> EvalCase:
@@ -37,6 +49,8 @@ def run_eval_case(
     runner = AgentRunner(config)
     if case.plans:
         runner.planner = _SequentialPlanner(case.plans)
+    elif case.simulated_planner_error is not None:
+        runner.planner = _FailingPlanner(_build_simulated_exception(case))
 
     result = runner.run(case.task, execution_mode=case.execution_mode)
     duration_ms = int((time.perf_counter() - started) * 1000)
@@ -81,6 +95,15 @@ class _SequentialPlanner:
         return plan
 
 
+class _FailingPlanner:
+    def __init__(self, exc: Exception) -> None:
+        self.exc = exc
+
+    def create_plan(self, task: Task) -> Plan:
+        del task
+        raise self.exc
+
+
 def _prepare_workspace(
     case: EvalCase,
     *,
@@ -94,6 +117,15 @@ def _prepare_workspace(
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(source, target)
     return target
+
+
+def _build_simulated_exception(case: EvalCase) -> Exception:
+    assert case.simulated_planner_error is not None
+    exc_type = _SIMULATED_EXCEPTIONS.get(
+        case.simulated_planner_error.error_type,
+        RuntimeError,
+    )
+    return exc_type(case.simulated_planner_error.message)
 
 
 def _build_case_config(case: EvalCase, *, workspace: Path) -> AgentConfig:
@@ -133,10 +165,18 @@ def _evaluate_case_result(
     actions = [step.action for step in result.step_results]
     event_types = [event.event_type for event in result.events]
     error_types = _collect_error_types(result)
-    failure_code = _first_failure_code(result)
+    failure_code = (
+        None if result.final_report.success else _first_failure_code(result)
+    )
+    failure_origin = (
+        None if result.final_report.success else _first_failure_origin(result)
+    )
     repair_code = _first_repair_code(result)
     planning_repaired = repair_code is not None
     attempts = result.final_report.attempts
+    failure_stage = (
+        None if result.final_report.success else _first_failure_stage(result)
+    )
     failure_reasons: list[str] = []
 
     if result.final_report.success is not case.expected_success:
@@ -151,6 +191,11 @@ def _evaluate_case_result(
     if case.expected_failure_code is not None and failure_code != case.expected_failure_code:
         failure_reasons.append(
             f"Expected failure code {case.expected_failure_code}, got {failure_code}."
+        )
+    if case.expected_failure_origin is not None and failure_origin != case.expected_failure_origin:
+        failure_reasons.append(
+            "Expected failure origin "
+            f"{case.expected_failure_origin}, got {failure_origin}."
         )
     if case.expected_repaired is not None and planning_repaired is not case.expected_repaired:
         failure_reasons.append(
@@ -185,8 +230,9 @@ def _evaluate_case_result(
         failure_reasons=failure_reasons,
         failure_type=_classify_failure(error_types, event_types, failure_reasons),
         observed_failure_type=_classify_observed_failure(error_types, event_types),
-        failure_stage=_first_failure_stage(result),
+        failure_stage=failure_stage,
         failure_code=failure_code,
+        failure_origin=failure_origin,
         planning_repaired=planning_repaired,
         repair_code=repair_code,
         steps=len(result.step_results),
@@ -271,24 +317,35 @@ def _collect_error_types(result: RunResult) -> list[str]:
 
 
 def _first_failure_stage(result: RunResult) -> str | None:
-    for error in result.final_report.errors:
+    for error in reversed(result.final_report.errors):
         if error.stage is not None:
             return error.stage
-    for attempt in result.attempts:
-        for error in [*attempt.errors, *attempt.completion_errors]:
+    for attempt in reversed(result.attempts):
+        for error in reversed([*attempt.errors, *attempt.completion_errors]):
             if error.stage is not None:
                 return error.stage
     return None
 
 
 def _first_failure_code(result: RunResult) -> str | None:
-    for error in result.final_report.errors:
+    for error in reversed(result.final_report.errors):
         if error.failure_code is not None:
             return error.failure_code
-    for attempt in result.attempts:
-        for error in [*attempt.errors, *attempt.completion_errors]:
+    for attempt in reversed(result.attempts):
+        for error in reversed([*attempt.errors, *attempt.completion_errors]):
             if error.failure_code is not None:
                 return error.failure_code
+    return None
+
+
+def _first_failure_origin(result: RunResult) -> FailureOrigin | None:
+    for error in reversed(result.final_report.errors):
+        if error.failure_origin is not None:
+            return cast(FailureOrigin, error.failure_origin)
+    for attempt in reversed(result.attempts):
+        for error in reversed([*attempt.errors, *attempt.completion_errors]):
+            if error.failure_origin is not None:
+                return cast(FailureOrigin, error.failure_origin)
     return None
 
 
@@ -346,13 +403,29 @@ def _build_report(*, started_at: str, case_results: list[EvalCaseResult]) -> Eva
             sum(1 for result in repair_cases if result.agent_success),
             len(repair_cases),
         ),
+        model_service_failure_rate=_rate(
+            sum(1 for result in case_results if result.failure_origin == "model_service"),
+            total_cases,
+        ),
+        agent_capability_failure_rate=_rate(
+            sum(1 for result in case_results if result.failure_origin == "agent_capability"),
+            total_cases,
+        ),
         failure_codes=_count_items(
             result.failure_code for result in case_results if result.failure_code
+        ),
+        failure_origins=_count_items(
+            result.failure_origin for result in case_results if result.failure_origin
         ),
         planning_failure_codes=_count_items(
             result.failure_code
             for result in case_results
             if result.failure_code and "planning_failed" in result.event_types
+        ),
+        planning_failure_origins=_count_items(
+            result.failure_origin
+            for result in case_results
+            if result.failure_origin and "planning_failed" in result.event_types
         ),
         repair_codes=_count_items(
             result.repair_code for result in case_results if result.repair_code

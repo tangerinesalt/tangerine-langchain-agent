@@ -202,7 +202,7 @@ def test_cli_eval_run_outputs_report(tmp_path: Path) -> None:
 
     assert completed.returncode == 0, completed.stderr
     payload = json.loads(completed.stdout)
-    assert payload["schema_version"] == "eval-report-v3"
+    assert payload["schema_version"] == "eval-report-v4"
     assert payload["total_cases"] == 1
     assert payload["passed_cases"] == 1
     assert payload["case_results"][0]["id"] == "create-file-success"
@@ -240,7 +240,7 @@ def test_cli_eval_archive_outputs_index(tmp_path: Path) -> None:
     assert completed.returncode == 0, completed.stderr
     payload = json.loads(completed.stdout)
     assert payload["report"]["passed_cases"] == 1
-    assert payload["index"]["schema_version"] == "agent-experience-index-v1"
+    assert payload["index"]["schema_version"] == "agent-experience-index-v2"
     assert payload["index"]["record_count"] == 1
     assert "append_run_tests_verification" in payload["index"]["by_repair_code"]
     assert report_path.exists()

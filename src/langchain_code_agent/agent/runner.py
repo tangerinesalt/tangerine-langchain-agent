@@ -213,6 +213,7 @@ class AgentRunner:
                 message=str(exc),
                 stage=planning_stage,
                 failure_code=planning_failure.code,
+                failure_origin=planning_failure.origin,
                 repairable=planning_failure.repairable,
                 traceback=traceback.format_exc(),
             )
@@ -228,6 +229,7 @@ class AgentRunner:
                     "planner_output": planner_output,
                     "error_type": type(exc).__name__,
                     "failure_code": planning_failure.code,
+                    "failure_origin": planning_failure.origin,
                     "repairable": planning_failure.repairable,
                 },
                 error_context=planning_error_context,
