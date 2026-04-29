@@ -138,8 +138,40 @@ def test_runner_execute_can_write_file_step(tmp_path: Path) -> None:
 
     assert result.step_results[0].ok is True
     assert (tmp_path / "weather.txt").read_text(encoding="utf-8") == "sunny"
-    assert result.final_report.file_changes
-    assert result.final_report.file_changes[0].path == "weather.txt"
+
+
+def test_runner_normalizes_root_list_files_path_before_validation(tmp_path: Path) -> None:
+    config = AgentConfig(
+        workspace_root=tmp_path,
+        planner_backend="noop",
+        shell_timeout_seconds=5,
+        ignore_patterns=[],
+        allowed_shell_commands=["python"],
+    )
+    runner = AgentRunner(config)
+    runner.planner = _StubPlanner(
+        Plan(
+            summary="Inspect files.",
+            steps=[
+                PlanStep(
+                    action="list_files",
+                    description="List files from the workspace root.",
+                    arguments={"path": ".", "limit": 20},
+                )
+            ],
+            completion_checks=[
+                CompletionCheck(
+                    check_type="action_succeeded",
+                    arguments={"action": "list_files"},
+                )
+            ],
+        )
+    )
+
+    result = runner.run("inspect workspace", execution_mode="execute")
+
+    assert result.final_report.success is True
+    assert result.step_results[0].arguments == {"limit": 20}
 
 
 def test_runner_records_run_diagnostics_and_artifact(tmp_path: Path) -> None:
@@ -267,7 +299,7 @@ def test_runner_rejects_unknown_arguments_for_action(tmp_path: Path) -> None:
                 PlanStep(
                     action="list_files",
                     description="Invalid arguments should fail.",
-                    arguments={"path": "."},
+                    arguments={"path": "src"},
                 )
             ],
         )

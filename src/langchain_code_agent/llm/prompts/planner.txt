@@ -13,6 +13,8 @@ Requirements:
 - Never call read_file, read_file_head, replace_in_file, insert_text, or glob_files with an
   empty path or empty pattern. If you do not know the path yet, use list_files, glob_files
   with one concrete pattern, or search_text first.
+- list_files only accepts limit. Do not pass path to list_files; if you need a subdirectory view,
+  use tree_view with path or glob_files with one concrete pattern.
 - For glob_files, use exactly one pattern string per step. Do not use multiple, patterns,
   list, or array arguments.
 - Use write_file when the task requires creating or updating a text file in the workspace.

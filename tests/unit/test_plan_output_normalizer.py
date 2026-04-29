@@ -187,3 +187,39 @@ def test_apply_plan_normalization_rules_expands_multiple_glob_patterns() -> None
         {"pattern": "*.py"},
         {"pattern": "tests/*.py"},
     ]
+
+
+def test_apply_plan_normalization_rules_drops_root_path_for_list_files() -> None:
+    plan = Plan(
+        summary="Inspect repository.",
+        steps=[
+            PlanStep(
+                action="list_files",
+                description="List files from the workspace root.",
+                arguments={"path": ".", "limit": 20},
+            )
+        ],
+    )
+    task = Task(goal="fix failing tests", workspace_root=Path.cwd(), execution_mode="execute")
+
+    normalized = apply_plan_normalization_rules(plan, task=task, workspace_root=Path.cwd())
+
+    assert normalized.steps[0].arguments == {"limit": 20}
+
+
+def test_apply_plan_normalization_rules_preserves_non_root_path_for_list_files() -> None:
+    plan = Plan(
+        summary="Inspect a subdirectory.",
+        steps=[
+            PlanStep(
+                action="list_files",
+                description="List files from src.",
+                arguments={"path": "src", "limit": 20},
+            )
+        ],
+    )
+    task = Task(goal="fix failing tests", workspace_root=Path.cwd(), execution_mode="execute")
+
+    normalized = apply_plan_normalization_rules(plan, task=task, workspace_root=Path.cwd())
+
+    assert normalized.steps[0].arguments == {"path": "src", "limit": 20}

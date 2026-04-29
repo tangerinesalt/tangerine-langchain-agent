@@ -1,0 +1,27 @@
+{
+  "id": "failure-normalizes-list-files-root-path",
+  "task": "Inspect the workspace root files.",
+  "workspace_fixture": "tests/fixtures/agent_tasks/fixtures/empty",
+  "max_replans": 0,
+  "expected_success": true,
+  "expected_actions": ["list_files"],
+  "expected_attempts": 1,
+  "plans": [
+    {
+      "summary": "List files from the workspace root.",
+      "steps": [
+        {
+          "action": "list_files",
+          "description": "List files from the workspace root.",
+          "arguments": {"path": ".", "limit": 20}
+        }
+      ],
+      "completion_checks": [
+        {
+          "check_type": "action_succeeded",
+          "arguments": {"action": "list_files"}
+        }
+      ]
+    }
+  ]
+}

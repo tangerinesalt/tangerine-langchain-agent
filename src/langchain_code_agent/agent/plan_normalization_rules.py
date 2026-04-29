@@ -30,7 +30,11 @@ def apply_plan_normalization_rules(plan: Plan, *, task: Task, workspace_root: Pa
     steps = list(plan.steps)
     for rule in PLAN_NORMALIZATION_RULES:
         steps = rule(steps, context)
-    return Plan(summary=plan.summary.strip(), steps=steps)
+    return Plan(
+        summary=plan.summary.strip(),
+        steps=steps,
+        completion_checks=list(plan.completion_checks),
+    )
 
 
 def _strip_code_fences(text: str) -> str:
@@ -227,6 +231,10 @@ def _normalize_step(step: PlanStep, *, workspace_root: Path) -> PlanStep:
             arguments["new_text"] = str(arguments.pop("new_str"))
     if action == "run_tests" and "path" in arguments and "working_directory" not in arguments:
         arguments["working_directory"] = str(arguments.pop("path"))
+    if action == "list_files" and "path" in arguments:
+        normalized_path = _normalize_path(str(arguments["path"]), workspace_root)
+        if normalized_path in {"", "."}:
+            arguments.pop("path")
     if (
         action in {"read_file", "read_file_head", "write_file", "delete_file"}
         and "path" in arguments

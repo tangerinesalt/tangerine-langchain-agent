@@ -37,6 +37,7 @@ Current failure mode samples:
 - `failure-detects-failed-tests`
 - `failure-detects-unexpected-file-change`
 - `failure-classifies-provider-timeout`
+- `failure-normalizes-list-files-root-path`
 
 ## Maintenance Rules
 

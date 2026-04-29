@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from langchain_code_agent.actions import ActionRuntime
 from langchain_code_agent.agent.completion_validator import validate_completion
+from langchain_code_agent.agent.plan_normalization_rules import apply_plan_normalization_rules
 from langchain_code_agent.agent.plan_repair import PlanRepairResult, repair_plan
 from langchain_code_agent.agent.plan_validator import validate_plan, validate_task_specific_plan
 from langchain_code_agent.agent.planner import build_planner
@@ -197,6 +198,11 @@ class AgentRunner:
         try:
             plan = self.planner.create_plan(task)
             planner_output = plan.to_dict()
+            plan = apply_plan_normalization_rules(
+                plan,
+                task=task,
+                workspace_root=self.config.workspace_root,
+            )
             planning_stage = "validate_plan"
             plan = validate_plan(plan, existing_paths=set(self.repository.snapshot_file_state()))
             planning_stage = "validate_task_specific_plan"

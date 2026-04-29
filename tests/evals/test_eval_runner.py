@@ -140,6 +140,24 @@ def test_failure_mode_classifies_provider_timeout(tmp_path: Path) -> None:
     assert result.observed_failure_type == "planning_failure"
 
 
+def test_failure_mode_normalizes_list_files_root_path(tmp_path: Path) -> None:
+    case = load_eval_case(
+        CASE_DIR / "failure_modes" / "normalizes_list_files_root_path.json"
+    )
+
+    result = run_eval_case(
+        case,
+        project_root=PROJECT_ROOT,
+        workspaces_root=tmp_path,
+    )
+
+    assert result.passed is True
+    assert result.agent_success is True
+    assert result.actions == ["list_files"]
+    assert result.failure_code is None
+    assert result.failure_origin is None
+
+
 def test_run_eval_suite_generates_baseline_report(tmp_path: Path) -> None:
     case_paths = sorted(CASE_DIR.glob("*.json"))
     report_path = tmp_path / "baseline.json"
