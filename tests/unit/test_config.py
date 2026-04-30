@@ -17,6 +17,7 @@ def test_config_loads_workspace_and_global_model_config_separately(tmp_path: Pat
                 'planner_backend = "noop"',
                 'model = "should-be-ignored"',
                 'model_api_key = "should-be-ignored"',
+                'planner_response_mode = "json_text"',
                 'test_command = "python -m pytest -q"',
             ]
         ),
@@ -67,6 +68,7 @@ def test_config_loads_workspace_and_global_model_config_separately(tmp_path: Pat
         f"auth:{auth_path.resolve()}:credentials.lmstudio_local.model_api_key"
     )
     assert config.test_command == "python -m pytest -q"
+    assert config.planner_response_mode == "json_text"
     assert "python" in config.allowed_shell_commands
 
 

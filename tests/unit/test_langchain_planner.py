@@ -85,6 +85,44 @@ def test_langchain_planner_validates_mapping_response(monkeypatch) -> None:
     assert plan.steps[0].action == "run_tests"
 
 
+def test_langchain_planner_auto_falls_back_when_structured_tool_choice_is_unsupported(
+    monkeypatch,
+) -> None:
+    class _FailingStructuredAgent:
+        def invoke(self, _: dict[str, object]) -> dict[str, object]:
+            raise RuntimeError("No endpoints found that support the provided 'tool_choice' value")
+
+    class _FakeModel:
+        def invoke(self, messages: list[object]) -> AIMessage:
+            assert messages
+            return AIMessage(
+                content=(
+                    '{"summary":"Write a note.","steps":['
+                    '{"action":"write_file","description":"Write note.",'
+                    '"arguments":{"path":"notes.txt","content":"ok"}}'
+                    "]}",
+                )
+            )
+
+    monkeypatch.setattr(planner_module, "build_chat_model", lambda config: _FakeModel())
+    monkeypatch.setattr(planner_module, "create_agent", lambda **kwargs: _FailingStructuredAgent())
+
+    config = AgentConfig(
+        workspace_root=Path.cwd(),
+        planner_backend="langchain",
+        model_backend="langchain",
+        model_provider="openrouter",
+        model="openrouter/test-model",
+        model_base_url="https://openrouter.ai/api/v1",
+    )
+    task = Task(goal="write notes.txt", workspace_root=Path.cwd(), execution_mode="execute")
+
+    plan = planner_module.LangChainPlanner(config).create_plan(task)
+
+    assert [step.action for step in plan.steps] == ["write_file"]
+    assert plan.steps[0].arguments["path"] == "notes.txt"
+
+
 def test_langchain_planner_falls_back_for_local_http_backend(monkeypatch) -> None:
     class _FakeModel:
         def invoke(self, messages: list[object]) -> AIMessage:
@@ -392,12 +430,26 @@ def test_planner_system_prompt_guides_identity_time_and_conciseness() -> None:
 
 
 def test_build_task_request_content_includes_replan_context_json() -> None:
+    from langchain_code_agent.models.planning_context import (
+        FixFailingTestsPlanningContext,
+        PlanningContext,
+    )
     from langchain_code_agent.models.replan import ReplanContext, ReplanFailedStep
 
     task = Task(
         goal="write notes.txt",
         workspace_root=Path.cwd(),
         execution_mode="execute",
+        planning_context=PlanningContext(
+            fix_failing_tests=FixFailingTestsPlanningContext(
+                test_command="python -m pytest -q",
+                run_tests_ok=False,
+                failing_test_ids=["test_app.py::test_add"],
+                candidate_paths=["test_app.py", "app.py"],
+                workspace_summary=[".", "  app.py", "  test_app.py"],
+                failure_excerpt="FAILED test_app.py::test_add",
+            )
+        ),
         replan_context=ReplanContext(
             original_task="write notes.txt",
             attempt=1,
@@ -409,6 +461,7 @@ def test_build_task_request_content_includes_replan_context_json() -> None:
                     arguments={"path": "pytest.log"},
                 )
             ],
+            attempt_failure_codes=["missing_workspace_path"],
             completion_failures=["Expected file to exist after run: notes.txt"],
             successful_actions=["list_files"],
             file_changes=[],
@@ -417,6 +470,69 @@ def test_build_task_request_content_includes_replan_context_json() -> None:
 
     content = planner_module._build_task_request_content(task)
 
+    assert "Planning context JSON" in content
+    assert '"fix_failing_tests"' in content
+    assert "Plan contract" in content
+    assert "Do not start again with list_files" in content
+    assert "Prefer editing a non-test candidate path when possible: app.py." in content
     assert "Replan context JSON" in content
     assert '"action": "read_file_head"' in content
     assert '"completion_failures"' in content
+
+
+def test_build_task_request_content_adds_missing_edit_step_replan_guidance() -> None:
+    from langchain_code_agent.models.replan import ReplanContext
+
+    task = Task(
+        goal="Fix the failing tests in this workspace.",
+        workspace_root=Path.cwd(),
+        execution_mode="execute",
+        replan_context=ReplanContext(
+            original_task="Fix the failing tests in this workspace.",
+            attempt=1,
+            previous_plan_summary="Inspect only.",
+            attempt_failures=[
+                "Fix-failing-tests tasks must include at least one edit step."
+            ],
+            attempt_failure_codes=["missing_edit_step"],
+            successful_actions=["list_files", "read_file"],
+            file_changes=[],
+        ),
+    )
+
+    content = planner_module._build_task_request_content(task)
+
+    assert "Replan guidance" in content
+    assert "missing_edit_step" in content
+    assert "concrete code-editing action" in content
+
+
+def test_build_plan_revision_request_content_includes_invalid_plan_and_failure() -> None:
+    task = Task(
+        goal="Fix the failing tests in this workspace.",
+        workspace_root=Path.cwd(),
+        execution_mode="execute",
+    )
+    invalid_plan = Plan(
+        summary="Inspect only.",
+        steps=[
+            PlanStep(
+                action="list_files",
+                description="Inspect the workspace.",
+                arguments={"limit": 20},
+            )
+        ],
+    )
+
+    content = planner_module._build_plan_revision_request_content(
+        task,
+        invalid_plan=invalid_plan,
+        failure_code="missing_edit_step",
+        failure_message="Fix-failing-tests tasks must include at least one edit step.",
+    )
+
+    assert "Previous invalid plan JSON" in content
+    assert '"action": "list_files"' in content
+    assert "Structural correction request" in content
+    assert "missing_edit_step" in content
+    assert "complete replacement plan" in content

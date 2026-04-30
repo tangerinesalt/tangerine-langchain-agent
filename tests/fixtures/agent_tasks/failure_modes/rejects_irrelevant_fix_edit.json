@@ -1,0 +1,30 @@
+{
+  "id": "rejects-irrelevant-fix-edit",
+  "task": "Fix the failing tests in this workspace.",
+  "workspace_fixture": "tests/fixtures/agent_tasks/fixtures/failing_tests",
+  "test_command": "python -m pytest -q",
+  "allowed_shell_commands": ["python", "pytest"],
+  "max_replans": 0,
+  "expected_success": false,
+  "expected_failure_code": "irrelevant_edit_step",
+  "expected_failure_origin": "agent_capability",
+  "expected_error_types": ["PlanValidationError"],
+  "expected_event_types": ["planning_context_prepared", "planning_failed"],
+  "plans": [
+    {
+      "summary": "Write an unrelated file and verify.",
+      "steps": [
+        {
+          "action": "write_file",
+          "description": "Write an unrelated marker file.",
+          "arguments": {"path": "fixed.txt", "content": "ok"}
+        },
+        {
+          "action": "run_tests",
+          "description": "Run tests.",
+          "arguments": {}
+        }
+      ]
+    }
+  ]
+}

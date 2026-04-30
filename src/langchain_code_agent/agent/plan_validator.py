@@ -6,6 +6,7 @@ from langchain_code_agent.actions import get_action_spec, validate_action_argume
 from langchain_code_agent.agent.planning_failures import (
     INVALID_ACTION,
     INVALID_ACTION_ARGUMENTS,
+    IRRELEVANT_EDIT_STEP,
     MISSING_EDIT_STEP,
     MISSING_VALIDATION_STEP,
     MISSING_WORKSPACE_PATH,
@@ -14,6 +15,7 @@ from langchain_code_agent.agent.planning_failures import (
     PlanValidationError,
 )
 from langchain_code_agent.models.plan import CompletionCheck, Plan
+from langchain_code_agent.models.planning_context import PlanningContext
 
 READ_ACTIONS = {"read_file", "read_file_head"}
 EDIT_ACTIONS = {"replace_in_file", "insert_text"}
@@ -46,7 +48,12 @@ def validate_plan(plan: Plan, *, existing_paths: set[str] | None = None) -> Plan
     return plan
 
 
-def validate_task_specific_plan(plan: Plan, *, task_text: str) -> Plan:
+def validate_task_specific_plan(
+    plan: Plan,
+    *,
+    task_text: str,
+    planning_context: PlanningContext | None = None,
+) -> Plan:
     if not is_fix_failing_tests_task(task_text):
         return plan
 
@@ -60,6 +67,8 @@ def validate_task_specific_plan(plan: Plan, *, task_text: str) -> Plan:
             "replace_in_file, insert_text, write_file, move_file, or delete_file.",
             failure_code=MISSING_EDIT_STEP,
         )
+
+    _validate_fix_failing_tests_edit_targets(plan, planning_context=planning_context)
 
     if not any(step.action == "run_tests" for step in plan.steps):
         raise PlanValidationError(
@@ -81,6 +90,33 @@ def validate_task_specific_plan(plan: Plan, *, task_text: str) -> Plan:
     return plan
 
 
+def _validate_fix_failing_tests_edit_targets(
+    plan: Plan,
+    *,
+    planning_context: PlanningContext | None,
+) -> None:
+    if planning_context is None or planning_context.fix_failing_tests is None:
+        return
+
+    candidate_paths = {
+        _normalize_path(path)
+        for path in planning_context.fix_failing_tests.candidate_paths
+        if path
+    }
+    if not candidate_paths:
+        return
+
+    edited_paths = _edited_paths(plan)
+    if edited_paths & candidate_paths:
+        return
+
+    raise PlanValidationError(
+        "Fix-failing-tests edit steps must target at least one candidate path from "
+        "the failing test context.",
+        failure_code=IRRELEVANT_EDIT_STEP,
+    )
+
+
 def validate_completion_check(check: CompletionCheck) -> str | None:
     required_arguments = COMPLETION_CHECK_ARGUMENTS.get(check.check_type, frozenset())
     unknown_arguments = sorted(set(check.arguments) - required_arguments)
@@ -97,6 +133,24 @@ def validate_completion_check(check: CompletionCheck) -> str | None:
             f"{', '.join(missing_arguments)}"
         )
     return None
+
+
+def _edited_paths(plan: Plan) -> set[str]:
+    paths: set[str] = set()
+    for step in plan.steps:
+        arguments = step.arguments
+        if step.action in {"replace_in_file", "insert_text", "write_file", "delete_file"}:
+            path = arguments.get("path")
+            if path is not None:
+                paths.add(_normalize_path(str(path)))
+        elif step.action == "move_file":
+            source_path = arguments.get("source_path")
+            destination_path = arguments.get("destination_path")
+            if source_path is not None:
+                paths.add(_normalize_path(str(source_path)))
+            if destination_path is not None:
+                paths.add(_normalize_path(str(destination_path)))
+    return paths
 
 
 COMPLETION_CHECK_ARGUMENTS: dict[str, frozenset[str]] = {

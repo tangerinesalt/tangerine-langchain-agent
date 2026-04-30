@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 
 from langchain_code_agent.agent.runner import AgentRunner
@@ -49,6 +50,34 @@ def test_runner_execute_runs_steps() -> None:
     assert "passed" in str(run_tests_result.data["stdout"])
     assert result.final_report.shell_outputs
     assert result.final_report.tool_calls
+
+
+def test_runner_prepares_fix_failing_tests_planning_context(tmp_path: Path) -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    fixture_repo = (
+        project_root / "tests" / "fixtures" / "agent_tasks" / "fixtures" / "failing_tests"
+    )
+    sample_repo = tmp_path / "failing_tests"
+    shutil.copytree(fixture_repo, sample_repo)
+    config = AgentConfig(
+        workspace_root=sample_repo,
+        planner_backend="noop",
+        shell_timeout_seconds=10,
+        test_command="python -m pytest -q",
+        ignore_patterns=["__pycache__", ".pytest_cache"],
+        allowed_shell_commands=["python", "pytest"],
+    )
+    runner = AgentRunner(config)
+    planner = _PlanningContextCapturingPlanner()
+    runner.planner = planner
+
+    result = runner.run("Fix the failing tests in this workspace.", execution_mode="execute")
+
+    assert planner.calls == 1
+    assert planner.failing_test_ids == ["test_app.py::test_add"]
+    assert planner.candidate_paths == ["test_app.py", "app.py"]
+    assert any(event.event_type == "planning_context_prepared" for event in result.events)
+    assert result.final_report.success is True
 
 
 def test_runner_records_error_context_for_failed_step() -> None:
@@ -579,6 +608,93 @@ def test_runner_retries_once_after_planning_failure(tmp_path: Path) -> None:
     assert any(event.event_type == "replan_requested" for event in result.events)
 
 
+def test_runner_passes_missing_edit_step_failure_code_into_replan_context(
+    tmp_path: Path,
+) -> None:
+    config = AgentConfig(
+        workspace_root=tmp_path,
+        planner_backend="noop",
+        shell_timeout_seconds=5,
+        max_replans=1,
+        test_command="python -c \"print('ok')\"",
+        ignore_patterns=[],
+        allowed_shell_commands=["python"],
+    )
+    runner = AgentRunner(config)
+    planner = _MissingEditStepAwarePlanner()
+    runner.planner = planner
+
+    result = runner.run("Fix the failing tests in this workspace.", execution_mode="execute")
+
+    assert planner.calls == 1
+    assert planner.revision_failure_code == "missing_edit_step"
+    assert result.final_report.success is True
+    assert result.final_report.attempts == 1
+    assert [step.action for step in result.step_results] == ["write_file", "run_tests"]
+    assert any(event.event_type == "plan_revised" for event in result.events)
+
+
+def test_runner_revises_missing_edit_step_with_bom_test_context(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "app.py").write_text(
+        "def add(left: int, right: int) -> int:\n"
+        "    return left - right\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "tests" / "test_app.py").write_text(
+        "\ufefffrom app import add\n\n"
+        "def test_add():\n"
+        "    assert add(2, 3) == 5\n",
+        encoding="utf-8",
+    )
+    config = AgentConfig(
+        workspace_root=tmp_path,
+        planner_backend="noop",
+        shell_timeout_seconds=10,
+        max_replans=0,
+        test_command="python -m pytest -q",
+        ignore_patterns=["__pycache__", ".pytest_cache"],
+        allowed_shell_commands=["python", "pytest"],
+    )
+    runner = AgentRunner(config)
+    planner = _MissingEditStepWithBomContextPlanner()
+    runner.planner = planner
+
+    result = runner.run("Fix the failing tests in this workspace.", execution_mode="execute")
+
+    assert planner.revision_failure_code == "missing_edit_step"
+    assert planner.candidate_paths == ["tests/test_app.py", "app.py"]
+    assert result.final_report.success is True
+    assert result.final_report.attempts == 1
+    assert [step.action for step in result.step_results] == ["replace_in_file", "run_tests"]
+    assert result.step_results[1].arguments == {}
+    assert "1 passed" in str(result.step_results[1].data["stdout"])
+    assert any(event.event_type == "plan_revised" for event in result.events)
+
+
+def test_runner_classifies_missing_edit_revision_provider_failure(tmp_path: Path) -> None:
+    config = AgentConfig(
+        workspace_root=tmp_path,
+        planner_backend="noop",
+        shell_timeout_seconds=5,
+        max_replans=0,
+        test_command="python -c \"print('ok')\"",
+        ignore_patterns=[],
+        allowed_shell_commands=["python"],
+    )
+    runner = AgentRunner(config)
+    runner.planner = _MissingEditStepRevisionFailingPlanner()
+
+    result = runner.run("Fix the failing tests in this workspace.", execution_mode="execute")
+
+    assert result.final_report.success is False
+    assert result.final_report.errors[0].stage == "planner_revision_call"
+    assert result.final_report.errors[0].failure_code == "provider_config_error"
+    assert result.final_report.errors[0].failure_origin == "model_service"
+
+
 def test_runner_repairs_fix_failing_tests_plan_with_missing_verification(
     tmp_path: Path,
 ) -> None:
@@ -652,6 +768,17 @@ class _StubPlanner:
     def create_plan(self, task) -> Plan:
         return self.plan
 
+    def revise_plan(
+        self,
+        task,
+        *,
+        invalid_plan: Plan,
+        failure_code: str,
+        failure_message: str,
+    ) -> Plan:
+        del task, invalid_plan, failure_code, failure_message
+        return self.plan
+
 
 class _SequentialPlanner:
     def __init__(self, outcomes: list[Plan | Exception]) -> None:
@@ -664,3 +791,180 @@ class _SequentialPlanner:
         if isinstance(outcome, Exception):
             raise outcome
         return outcome
+
+    def revise_plan(
+        self,
+        task,
+        *,
+        invalid_plan: Plan,
+        failure_code: str,
+        failure_message: str,
+    ) -> Plan:
+        del invalid_plan, failure_code, failure_message
+        return self.create_plan(task)
+
+
+class _MissingEditStepAwarePlanner:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.revision_failure_code: str | None = None
+
+    def create_plan(self, task) -> Plan:
+        self.calls += 1
+        return Plan(
+            summary="Inspect only.",
+            steps=[
+                PlanStep(
+                    action="list_files",
+                    description="Inspect the workspace.",
+                    arguments={"limit": 20},
+                ),
+                PlanStep(
+                    action="run_tests",
+                    description="Run tests.",
+                    arguments={},
+                ),
+            ],
+        )
+
+    def revise_plan(
+        self,
+        task,
+        *,
+        invalid_plan: Plan,
+        failure_code: str,
+        failure_message: str,
+    ) -> Plan:
+        del task, invalid_plan, failure_message
+        self.revision_failure_code = failure_code
+        return Plan(
+            summary="Edit and verify.",
+            steps=[
+                PlanStep(
+                    action="write_file",
+                    description="Write the fixed file.",
+                    arguments={"path": "fixed.txt", "content": "ok"},
+                ),
+                PlanStep(
+                    action="run_tests",
+                    description="Verify the fix.",
+                    arguments={},
+                ),
+            ],
+        )
+
+
+class _MissingEditStepWithBomContextPlanner:
+    def __init__(self) -> None:
+        self.revision_failure_code: str | None = None
+        self.candidate_paths: list[str] | None = None
+
+    def create_plan(self, task) -> Plan:
+        return Plan(
+            summary="Inspect only.",
+            steps=[
+                PlanStep(
+                    action="list_files",
+                    description="Inspect files.",
+                    arguments={"limit": 20},
+                ),
+                PlanStep(
+                    action="run_tests",
+                    description="Confirm the failure.",
+                    arguments={},
+                ),
+            ],
+        )
+
+    def revise_plan(
+        self,
+        task,
+        *,
+        invalid_plan: Plan,
+        failure_code: str,
+        failure_message: str,
+    ) -> Plan:
+        del invalid_plan, failure_message
+        self.revision_failure_code = failure_code
+        assert task.planning_context is not None
+        assert task.planning_context.fix_failing_tests is not None
+        self.candidate_paths = list(task.planning_context.fix_failing_tests.candidate_paths)
+        return Plan(
+            summary="Fix add and verify.",
+            steps=[
+                PlanStep(
+                    action="replace_in_file",
+                    description="Fix the add implementation.",
+                    arguments={
+                        "path": "app.py",
+                        "old_text": "return left - right",
+                        "new_text": "return left + right",
+                    },
+                ),
+                PlanStep(
+                    action="run_tests",
+                    description="Verify the fix.",
+                    arguments={
+                        "command": "python -m pytest -q",
+                        "returncode": 0,
+                    },
+                ),
+            ],
+        )
+
+
+class _MissingEditStepRevisionFailingPlanner(_MissingEditStepAwarePlanner):
+    def revise_plan(
+        self,
+        task,
+        *,
+        invalid_plan: Plan,
+        failure_code: str,
+        failure_message: str,
+    ) -> Plan:
+        del task, invalid_plan, failure_code, failure_message
+        raise RuntimeError("No endpoints found that support the provided 'tool_choice' value")
+
+
+class _PlanningContextCapturingPlanner:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.failing_test_ids: list[str] | None = None
+        self.candidate_paths: list[str] | None = None
+
+    def create_plan(self, task) -> Plan:
+        self.calls += 1
+        assert task.planning_context is not None
+        assert task.planning_context.fix_failing_tests is not None
+        self.failing_test_ids = list(task.planning_context.fix_failing_tests.failing_test_ids)
+        self.candidate_paths = list(task.planning_context.fix_failing_tests.candidate_paths)
+        return Plan(
+            summary="Fix and verify.",
+            steps=[
+                PlanStep(
+                    action="replace_in_file",
+                    description="Fix the add implementation.",
+                    arguments={
+                        "path": "app.py",
+                        "old_text": "return left - right",
+                        "new_text": "return left + right",
+                    },
+                ),
+                PlanStep(
+                    action="run_tests",
+                    description="Verify the fix.",
+                    arguments={},
+                ),
+            ],
+        )
+
+    def revise_plan(
+        self,
+        task,
+        *,
+        invalid_plan: Plan,
+        failure_code: str,
+        failure_message: str,
+    ) -> Plan:
+        del invalid_plan, failure_code, failure_message
+        return self.create_plan(task)

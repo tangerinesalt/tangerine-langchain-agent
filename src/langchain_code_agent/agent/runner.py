@@ -15,7 +15,11 @@ from langchain_code_agent.agent.plan_normalization_rules import apply_plan_norma
 from langchain_code_agent.agent.plan_repair import PlanRepairResult, repair_plan
 from langchain_code_agent.agent.plan_validator import validate_plan, validate_task_specific_plan
 from langchain_code_agent.agent.planner import build_planner
-from langchain_code_agent.agent.planning_failures import classify_planning_exception
+from langchain_code_agent.agent.planning_context_builder import build_planning_context
+from langchain_code_agent.agent.planning_failures import (
+    PlannerRevisionError,
+    classify_planning_exception,
+)
 from langchain_code_agent.agent.replan_context import build_replan_context
 from langchain_code_agent.agent.run_reporter import (
     RunReporter,
@@ -26,6 +30,7 @@ from langchain_code_agent.agent.run_reporter import (
 from langchain_code_agent.agent.step_executor import StepExecutor
 from langchain_code_agent.agent_config import AgentConfig
 from langchain_code_agent.models.plan import Plan
+from langchain_code_agent.models.planning_context import PlanningContext
 from langchain_code_agent.models.replan import ReplanContext
 from langchain_code_agent.models.result import (
     AttemptResult,
@@ -77,6 +82,32 @@ class AgentRunner:
                 "execution_mode": execution_mode,
             },
         )
+        planning_context = build_planning_context(
+            task_text,
+            execution_mode=execution_mode,
+            repository=self.repository,
+            action_runtime=self.action_runtime,
+        )
+        if planning_context is not None and planning_context.fix_failing_tests is not None:
+            self.reporter.record_event(
+                events,
+                event_type="planning_context_prepared",
+                level="INFO",
+                message="Prepared deterministic planning context for fix-failing-tests.",
+                details={
+                    "task": task_text,
+                    "failing_test_ids": list(
+                        planning_context.fix_failing_tests.failing_test_ids
+                    ),
+                    "candidate_paths": list(
+                        planning_context.fix_failing_tests.candidate_paths
+                    ),
+                    "run_tests_ok": planning_context.fix_failing_tests.run_tests_ok,
+                    "run_tests_returncode": (
+                        planning_context.fix_failing_tests.run_tests_returncode
+                    ),
+                },
+            )
         max_attempts = 1 if execution_mode == "dry-run" else self.config.max_replans + 1
         for attempt in range(1, max_attempts + 1):
             self.reporter.record_event(
@@ -92,6 +123,7 @@ class AgentRunner:
                 execution_mode=execution_mode,
                 events=events,
                 attempt=attempt,
+                planning_context=planning_context,
                 replan_context=replan_context,
                 run_id=run_id,
                 run_started_at=run_started_at,
@@ -182,6 +214,7 @@ class AgentRunner:
         execution_mode: str,
         events: list[RunEvent],
         attempt: int,
+        planning_context: PlanningContext | None,
         replan_context: ReplanContext | None,
         run_id: str,
         run_started_at: str,
@@ -190,6 +223,7 @@ class AgentRunner:
             goal=task_text,
             workspace_root=self.config.workspace_root,
             execution_mode=execution_mode,
+            planning_context=planning_context,
             replan_context=replan_context,
         )
         planning_started = time.perf_counter()
@@ -206,18 +240,25 @@ class AgentRunner:
             planning_stage = "validate_plan"
             plan = validate_plan(plan, existing_paths=set(self.repository.snapshot_file_state()))
             planning_stage = "validate_task_specific_plan"
-            plan, repair_result = _validate_or_repair_task_specific_plan(
+            plan, repair_result, revised_failure = _validate_or_repair_task_specific_plan(
                 plan,
+                planner=self.planner,
+                task=task,
                 task_text=task.goal,
                 existing_paths=set(self.repository.snapshot_file_state()),
             )
         except Exception as exc:
             planning_duration_ms = _elapsed_ms(planning_started)
-            planning_failure = classify_planning_exception(exc, stage=planning_stage)
+            error_stage = (
+                "planner_revision_call"
+                if isinstance(exc, PlannerRevisionError)
+                else planning_stage
+            )
+            planning_failure = classify_planning_exception(exc, stage=error_stage)
             planning_error_context = ErrorContext(
                 error_type=type(exc).__name__,
                 message=str(exc),
-                stage=planning_stage,
+                stage=error_stage,
                 failure_code=planning_failure.code,
                 failure_origin=planning_failure.origin,
                 repairable=planning_failure.repairable,
@@ -230,7 +271,7 @@ class AgentRunner:
                 message="Planner failed to create a plan.",
                 details={
                     "attempt": attempt,
-                    "stage": planning_stage,
+                    "stage": error_stage,
                     "duration_ms": planning_duration_ms,
                     "planner_output": planner_output,
                     "error_type": type(exc).__name__,
@@ -272,6 +313,18 @@ class AgentRunner:
             return failed_result
 
         planning_duration_ms = _elapsed_ms(planning_started)
+        if revised_failure is not None:
+            self.reporter.record_event(
+                events,
+                event_type="plan_revised",
+                level="INFO",
+                message="Planner revised the plan after a structural validation failure.",
+                details={
+                    "attempt": attempt,
+                    "revised_failure_code": revised_failure["failure_code"],
+                    "revised_failure_message": revised_failure["failure_message"],
+                },
+            )
         if repair_result is not None:
             self.reporter.record_event(
                 events,
@@ -496,16 +549,55 @@ def _fallback_plan() -> Plan:
 def _validate_or_repair_task_specific_plan(
     plan: Plan,
     *,
+    planner: Any,
+    task: Task,
     task_text: str,
     existing_paths: set[str],
-) -> tuple[Plan, PlanRepairResult | None]:
+) -> tuple[Plan, PlanRepairResult | None, dict[str, str] | None]:
     try:
-        return validate_task_specific_plan(plan, task_text=task_text), None
+        return (
+            validate_task_specific_plan(
+                plan,
+                task_text=task_text,
+                planning_context=task.planning_context,
+            ),
+            None,
+            None,
+        )
     except Exception as exc:
         planning_failure = classify_planning_exception(
             exc,
             stage="validate_task_specific_plan",
         )
+        if planning_failure.code == "missing_edit_step":
+            try:
+                revised_plan = planner.revise_plan(
+                    task,
+                    invalid_plan=plan,
+                    failure_code=planning_failure.code,
+                    failure_message=str(exc),
+                )
+            except Exception as revision_exc:
+                raise PlannerRevisionError(revision_exc) from revision_exc
+            revised_plan = apply_plan_normalization_rules(
+                revised_plan,
+                task=task,
+                workspace_root=task.workspace_root,
+            )
+            revised_plan = validate_plan(revised_plan, existing_paths=existing_paths)
+            revised_plan = validate_task_specific_plan(
+                revised_plan,
+                task_text=task_text,
+                planning_context=task.planning_context,
+            )
+            return (
+                revised_plan,
+                None,
+                {
+                    "failure_code": planning_failure.code,
+                    "failure_message": str(exc),
+                },
+            )
         repair_result = repair_plan(
             plan,
             task_text=task_text,
@@ -515,8 +607,12 @@ def _validate_or_repair_task_specific_plan(
             raise
 
         repaired_plan = validate_plan(repair_result.plan, existing_paths=existing_paths)
-        repaired_plan = validate_task_specific_plan(repaired_plan, task_text=task_text)
-        return repaired_plan, repair_result
+        repaired_plan = validate_task_specific_plan(
+            repaired_plan,
+            task_text=task_text,
+            planning_context=task.planning_context,
+        )
+        return repaired_plan, repair_result, None
 
 
 def _attempt_result_from_run_result(

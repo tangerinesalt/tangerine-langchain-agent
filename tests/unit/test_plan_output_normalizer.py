@@ -141,6 +141,24 @@ def test_apply_plan_normalization_rules_maps_file_alias_and_run_tests_path() -> 
     assert normalized.steps[1].arguments == {"working_directory": "."}
 
 
+def test_apply_plan_normalization_rules_drops_run_tests_command_result_arguments() -> None:
+    plan = Plan(
+        summary="Verify.",
+        steps=[
+            PlanStep(
+                action="run_tests",
+                description="Run configured tests.",
+                arguments={"command": "python -m pytest -q", "returncode": 0},
+            )
+        ],
+    )
+    task = Task(goal="fix failing tests", workspace_root=Path.cwd(), execution_mode="execute")
+
+    normalized = apply_plan_normalization_rules(plan, task=task, workspace_root=Path.cwd())
+
+    assert normalized.steps[0].arguments == {}
+
+
 def test_apply_plan_normalization_rules_maps_replace_text_aliases() -> None:
     plan = Plan(
         summary="Fix implementation.",
@@ -152,6 +170,32 @@ def test_apply_plan_normalization_rules_maps_replace_text_aliases() -> None:
                     "path": "app.py",
                     "old_str": "return left - right",
                     "new_str": "return left + right",
+                },
+            )
+        ],
+    )
+    task = Task(goal="fix failing tests", workspace_root=Path.cwd(), execution_mode="execute")
+
+    normalized = apply_plan_normalization_rules(plan, task=task, workspace_root=Path.cwd())
+
+    assert normalized.steps[0].arguments == {
+        "path": "app.py",
+        "old_text": "return left - right",
+        "new_text": "return left + right",
+    }
+
+
+def test_apply_plan_normalization_rules_maps_filepath_alias_for_file_edits() -> None:
+    plan = Plan(
+        summary="Fix implementation.",
+        steps=[
+            PlanStep(
+                action="replace_in_file",
+                description="Fix arithmetic.",
+                arguments={
+                    "filepath": "app.py",
+                    "old_text": "return left - right",
+                    "new_text": "return left + right",
                 },
             )
         ],

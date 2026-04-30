@@ -158,6 +158,42 @@ def test_failure_mode_normalizes_list_files_root_path(tmp_path: Path) -> None:
     assert result.failure_origin is None
 
 
+def test_failure_mode_replans_after_missing_edit_step(tmp_path: Path) -> None:
+    case = load_eval_case(
+        CASE_DIR / "failure_modes" / "replans_after_missing_edit_step.json"
+    )
+
+    result = run_eval_case(
+        case,
+        project_root=PROJECT_ROOT,
+        workspaces_root=tmp_path,
+    )
+
+    assert result.passed is True
+    assert result.agent_success is True
+    assert result.attempts == 1
+    assert result.replanned is False
+    assert result.actions == ["write_file", "run_tests"]
+
+
+def test_failure_mode_rejects_irrelevant_fix_edit(tmp_path: Path) -> None:
+    case = load_eval_case(
+        CASE_DIR / "failure_modes" / "rejects_irrelevant_fix_edit.json"
+    )
+
+    result = run_eval_case(
+        case,
+        project_root=PROJECT_ROOT,
+        workspaces_root=tmp_path,
+    )
+
+    assert result.passed is True
+    assert result.agent_success is False
+    assert result.failure_code == "irrelevant_edit_step"
+    assert result.failure_origin == "agent_capability"
+    assert result.actions == []
+
+
 def test_run_eval_suite_generates_baseline_report(tmp_path: Path) -> None:
     case_paths = sorted(CASE_DIR.glob("*.json"))
     report_path = tmp_path / "baseline.json"

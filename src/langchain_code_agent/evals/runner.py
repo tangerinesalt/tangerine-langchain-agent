@@ -94,6 +94,17 @@ class _SequentialPlanner:
         self.calls += 1
         return plan
 
+    def revise_plan(
+        self,
+        task: Task,
+        *,
+        invalid_plan: Plan,
+        failure_code: str,
+        failure_message: str,
+    ) -> Plan:
+        del invalid_plan, failure_code, failure_message
+        return self.create_plan(task)
+
 
 class _FailingPlanner:
     def __init__(self, exc: Exception) -> None:
@@ -101,6 +112,17 @@ class _FailingPlanner:
 
     def create_plan(self, task: Task) -> Plan:
         del task
+        raise self.exc
+
+    def revise_plan(
+        self,
+        task: Task,
+        *,
+        invalid_plan: Plan,
+        failure_code: str,
+        failure_message: str,
+    ) -> Plan:
+        del task, invalid_plan, failure_code, failure_message
         raise self.exc
 
 

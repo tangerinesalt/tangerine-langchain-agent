@@ -17,6 +17,7 @@ PlanningFailureCode = Literal[
     "invalid_action_arguments",
     "missing_workspace_path",
     "missing_edit_step",
+    "irrelevant_edit_step",
     "missing_validation_step",
     "validation_before_edit",
     "unsatisfiable_completion_check",
@@ -35,6 +36,7 @@ INVALID_ACTION: PlanningFailureCode = "invalid_action"
 INVALID_ACTION_ARGUMENTS: PlanningFailureCode = "invalid_action_arguments"
 MISSING_WORKSPACE_PATH: PlanningFailureCode = "missing_workspace_path"
 MISSING_EDIT_STEP: PlanningFailureCode = "missing_edit_step"
+IRRELEVANT_EDIT_STEP: PlanningFailureCode = "irrelevant_edit_step"
 MISSING_VALIDATION_STEP: PlanningFailureCode = "missing_validation_step"
 VALIDATION_BEFORE_EDIT: PlanningFailureCode = "validation_before_edit"
 UNSATISFIABLE_COMPLETION_CHECK: PlanningFailureCode = "unsatisfiable_completion_check"
@@ -68,7 +70,16 @@ class PlanValidationError(ValueError):
         self.repairable = repairable
 
 
+class PlannerRevisionError(RuntimeError):
+    def __init__(self, exc: Exception) -> None:
+        super().__init__(str(exc))
+        self.original = exc
+
+
 def classify_planning_exception(exc: Exception, *, stage: str) -> PlanningFailure:
+    if isinstance(exc, PlannerRevisionError):
+        return _classify_planner_call_exception(exc.original)
+
     if isinstance(exc, PlanValidationError):
         return PlanningFailure(
             code=exc.failure_code,
@@ -129,6 +140,10 @@ def _classify_planner_call_exception(exc: Exception) -> PlanningFailure:
             "configuration error",
             "invalid base url",
             "model profile",
+            "'models' array must have",
+            "models array must have",
+            "no endpoints found",
+            "tool_choice",
         ),
     ):
         return PlanningFailure(code=PROVIDER_CONFIG_ERROR, origin="model_service")

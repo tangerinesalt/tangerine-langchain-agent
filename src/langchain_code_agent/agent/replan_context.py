@@ -14,6 +14,13 @@ def build_replan_context(original_task: str, attempt_result: AttemptResult) -> R
             if error.message and error.error_type != "IncompleteTaskResult"
         }
     )
+    attempt_failure_codes = sorted(
+        {
+            error.failure_code
+            for error in attempt_result.errors
+            if error.failure_code is not None and error.error_type != "IncompleteTaskResult"
+        }
+    )
     completion_failures = [
         error.message for error in attempt_result.completion_errors if error.message
     ]
@@ -44,6 +51,7 @@ def build_replan_context(original_task: str, attempt_result: AttemptResult) -> R
         previous_plan_summary=attempt_result.plan.summary,
         failed_steps=failed_steps,
         attempt_failures=attempt_failures,
+        attempt_failure_codes=attempt_failure_codes,
         completion_failures=completion_failures,
         successful_actions=successful_actions,
         file_changes=file_changes,

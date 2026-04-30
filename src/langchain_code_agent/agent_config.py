@@ -44,6 +44,7 @@ class AgentConfig:
     model_config_path: Path | None = None
     auth_path: Path | None = None
     model_api_key_source: str | None = None
+    planner_response_mode: str = "auto"
     shell_timeout_seconds: int = 30
     max_replans: int = 1
     test_command: str | None = None
@@ -89,6 +90,7 @@ class AgentConfig:
             model_config_path=model_settings.model_config_path,
             auth_path=model_settings.auth_path,
             model_api_key_source=model_settings.model_api_key_source,
+            planner_response_mode=str(workspace_data.get("planner_response_mode", "auto")),
             shell_timeout_seconds=int(workspace_data.get("shell_timeout_seconds", 30)),
             max_replans=int(workspace_data.get("max_replans", 1)),
             test_command=workspace_data.get("test_command"),

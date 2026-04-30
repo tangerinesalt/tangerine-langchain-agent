@@ -15,6 +15,8 @@ from langchain_code_agent.agent.plan_validator import validate_plan
 from langchain_code_agent.agent_config import AgentConfig
 from langchain_code_agent.llm.factory import build_chat_model
 from langchain_code_agent.models.plan import Plan, PlanStep
+from langchain_code_agent.models.planning_context import FixFailingTestsPlanningContext
+from langchain_code_agent.models.replan import ReplanContext
 from langchain_code_agent.models.task import Task
 from langchain_code_agent.workspace.repository import Repository
 
@@ -34,6 +36,16 @@ PLANNER_SYSTEM_PROMPT = _load_planner_system_prompt()
 
 class Planner(Protocol):
     def create_plan(self, task: Task) -> Plan:
+        ...
+
+    def revise_plan(
+        self,
+        task: Task,
+        *,
+        invalid_plan: Plan,
+        failure_code: str,
+        failure_message: str,
+    ) -> Plan:
         ...
 
 
@@ -71,15 +83,58 @@ class NoopPlanner:
             )
         return Plan(summary="A minimal local execution plan.", steps=steps)
 
+    def revise_plan(
+        self,
+        task: Task,
+        *,
+        invalid_plan: Plan,
+        failure_code: str,
+        failure_message: str,
+    ) -> Plan:
+        return self.create_plan(task)
+
 
 class LangChainPlanner:
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
 
     def create_plan(self, task: Task) -> Plan:
-        if _should_use_json_planner_fallback(self.config):
-            return self._create_plan_with_json_fallback(task)
+        request_content = _build_task_request_content(task)
+        return self._create_plan(request_content, task)
 
+    def revise_plan(
+        self,
+        task: Task,
+        *,
+        invalid_plan: Plan,
+        failure_code: str,
+        failure_message: str,
+    ) -> Plan:
+        request_content = _build_plan_revision_request_content(
+            task,
+            invalid_plan=invalid_plan,
+            failure_code=failure_code,
+            failure_message=failure_message,
+        )
+        return self._create_plan(request_content, task)
+
+    def _create_plan(self, request_content: str, task: Task) -> Plan:
+        response_mode = self.config.planner_response_mode
+        if response_mode not in {"auto", "structured", "json_text"}:
+            raise ValueError(f"Unsupported planner_response_mode: {response_mode}")
+        if response_mode == "json_text" or _should_use_json_planner_fallback(self.config):
+            return self._create_plan_with_json_fallback(request_content, task)
+        if response_mode == "structured":
+            return self._create_structured_plan(request_content, task)
+
+        try:
+            return self._create_structured_plan(request_content, task)
+        except Exception as exc:
+            if _should_retry_structured_plan_as_json(exc):
+                return self._create_plan_with_json_fallback(request_content, task)
+            raise
+
+    def _create_structured_plan(self, request_content: str, task: Task) -> Plan:
         agent = create_agent(
             model=build_chat_model(self.config),
             tools=[],
@@ -91,7 +146,7 @@ class LangChainPlanner:
                 "messages": [
                     {
                         "role": "user",
-                        "content": _build_task_request_content(task),
+                        "content": request_content,
                     }
                 ]
             }
@@ -109,9 +164,9 @@ class LangChainPlanner:
             existing_paths=_existing_workspace_paths(self.config),
         )
 
-    def _create_plan_with_json_fallback(self, task: Task) -> Plan:
+    def _create_plan_with_json_fallback(self, request_content: str, task: Task) -> Plan:
         model = build_chat_model(self.config)
-        messages = _build_json_fallback_messages(task)
+        messages = _build_json_fallback_messages(request_content)
         response = model.invoke(messages)
         return validate_plan(
             normalize_plan_output(
@@ -159,12 +214,26 @@ def _should_use_json_planner_fallback(config: AgentConfig) -> bool:
     return hostname in local_hosts and path == "/v1"
 
 
-def _build_json_fallback_messages(task: Task) -> list[SystemMessage | HumanMessage]:
+def _should_retry_structured_plan_as_json(exc: Exception) -> bool:
+    message = f"{type(exc).__name__}: {exc}".lower()
+    retry_markers = (
+        "tool_choice",
+        "no endpoints found",
+        "response_format",
+        "structured output",
+        "structured response",
+        "function calling",
+        "tool calling",
+    )
+    return any(marker in message for marker in retry_markers)
+
+
+def _build_json_fallback_messages(request_content: str) -> list[SystemMessage | HumanMessage]:
     return [
         SystemMessage(content=PLANNER_SYSTEM_PROMPT),
         HumanMessage(
             content=(
-                f"{_build_task_request_content(task)}\n"
+                f"{request_content}\n"
                 "Return only valid JSON.\n"
                 "Available actions and arguments:\n"
                 f"{PLANNER_ACTION_SCHEMAS}\n"
@@ -179,6 +248,10 @@ def _build_json_fallback_messages(task: Task) -> list[SystemMessage | HumanMessa
                 "or patterns arguments.\n"
                 "For replace_in_file, use old_text and new_text. Do not use old_str "
                 "or new_str.\n"
+                "When Planning context JSON is provided, treat it as deterministic "
+                "local evidence gathered before planning. Use it to choose relevant "
+                "files and avoid restarting with inspection-only steps when it already "
+                "includes failing test output or candidate paths.\n"
                 "For fix-failing-tests tasks, including Chinese tasks that mention "
                 "修复 and 测试, read relevant files, edit code, then run_tests.\n"
                 "Include completion_checks when the task has a concrete success condition.\n"
@@ -202,15 +275,130 @@ def _build_task_request_content(task: Task) -> str:
         f"Workspace: {task.workspace_root}",
         f"Execution mode: {task.execution_mode}",
     ]
+    if task.planning_context is not None:
+        lines.append(
+            "Planning context JSON:\n"
+            + json.dumps(task.planning_context.to_dict(), ensure_ascii=False, indent=2)
+        )
+        contract = _build_planning_context_contract(task.planning_context.fix_failing_tests)
+        if contract:
+            lines.append("Plan contract:\n" + "\n".join(contract))
     if task.replan_context is not None:
         lines.append(
             "Replan context JSON:\n"
             + json.dumps(task.replan_context.to_dict(), ensure_ascii=False, indent=2)
         )
+        guidance = _build_replan_guidance(task.replan_context)
+        if guidance:
+            lines.append("Replan guidance:\n" + "\n".join(guidance))
     lines.append("Generate the best execution plan.")
+    return "\n".join(lines)
+
+
+def _build_plan_revision_request_content(
+    task: Task,
+    *,
+    invalid_plan: Plan,
+    failure_code: str,
+    failure_message: str,
+) -> str:
+    lines = [_build_task_request_content(task)]
+    lines.append(
+        "Previous invalid plan JSON:\n"
+        + json.dumps(invalid_plan.to_dict(), ensure_ascii=False, indent=2)
+    )
+    lines.append(
+        "Structural correction request:\n"
+        f"- Validation failure code: {failure_code}\n"
+        f"- Validation failure message: {failure_message}\n"
+        "- Return a complete replacement plan, not a partial diff.\n"
+        "- Preserve the task goal and use only allowed actions.\n"
+        "- Satisfy the validation failure exactly."
+    )
     return "\n".join(lines)
 
 
 def _existing_workspace_paths(config: AgentConfig) -> set[str]:
     repository = Repository(config.workspace_root, config.ignore_patterns)
     return set(repository.snapshot_file_state())
+
+
+def _build_replan_guidance(replan_context: ReplanContext) -> list[str]:
+    guidance: list[str] = []
+    failure_codes = set(replan_context.attempt_failure_codes)
+
+    if "missing_edit_step" in failure_codes:
+        guidance.append(
+            "- The previous attempt failed with missing_edit_step. This retry must "
+            "include at least one concrete code-editing action before the final "
+            "run_tests step. Do not return only inspection or diagnostic steps."
+        )
+    if "missing_validation_step" in failure_codes:
+        guidance.append(
+            "- The previous attempt failed with missing_validation_step. This retry "
+            "must finish with a final run_tests verification step after the edits."
+        )
+    if "validation_before_edit" in failure_codes:
+        guidance.append(
+            "- The previous attempt failed with validation_before_edit. Any run_tests "
+            "verification step must come after the edit steps, not before them."
+        )
+
+    return guidance
+
+
+def _build_planning_context_contract(
+    fix_context: FixFailingTestsPlanningContext | None,
+) -> list[str]:
+    if fix_context is None:
+        return []
+
+    contract: list[str] = [
+        "- This is a fix-failing-tests task with deterministic local context already "
+        "collected. Do not start again with list_files when candidate_paths are already provided.",
+        "- The plan must include at least one concrete code-editing action "
+        "(replace_in_file, insert_text, or write_file) targeting a candidate path.",
+        "- The final step must be run_tests after the edit steps.",
+    ]
+    if fix_context.file_excerpts:
+        contract.insert(
+            1,
+            "- Use file_excerpts and candidate_paths to choose the edit target. Add read_file "
+            "or read_file_head only when the excerpt is not enough for a concrete edit.",
+        )
+    else:
+        contract.insert(
+            1,
+            "- Use candidate_paths to choose the edit target and read the relevant file "
+            "before making a concrete edit.",
+        )
+
+    if fix_context.failing_test_ids:
+        contract.append(
+            "- Failing tests already identified: "
+            + ", ".join(fix_context.failing_test_ids[:4])
+            + "."
+        )
+    if fix_context.candidate_paths:
+        contract.append(
+            "- Candidate paths to inspect first: "
+            + ", ".join(fix_context.candidate_paths[:6])
+            + "."
+        )
+    implementation_candidates = [
+        path for path in fix_context.candidate_paths if not _looks_like_test_path(path)
+    ]
+    if implementation_candidates:
+        contract.append(
+            "- Prefer editing a non-test candidate path when possible: "
+            + ", ".join(implementation_candidates[:4])
+            + "."
+        )
+
+    return contract
+
+
+def _looks_like_test_path(path: str) -> bool:
+    normalized = path.replace("\\", "/")
+    filename = Path(normalized).name
+    return filename.startswith("test_") or "/tests/" in f"/{normalized}/"

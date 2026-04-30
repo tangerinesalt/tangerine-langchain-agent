@@ -16,6 +16,7 @@ DEFAULT_GLOBAL_AUTH_BASENAME = "auth.json"
 WORKSPACE_CONFIG_KEYS = {
     "workspace_root",
     "planner_backend",
+    "planner_response_mode",
     "shell_timeout_seconds",
     "max_replans",
     "test_command",

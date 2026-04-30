@@ -71,6 +71,7 @@ def test_build_replan_context_collects_failures_successes_and_file_changes() -> 
     assert context.attempt == 1
     assert context.previous_plan_summary == "Inspect first."
     assert context.attempt_failures == []
+    assert context.attempt_failure_codes == []
     assert context.successful_actions == ["list_files"]
     assert context.file_changes == ["notes.txt"]
     assert context.completion_failures == ["Expected file to exist after run: notes.txt"]
@@ -145,3 +146,30 @@ def test_build_replan_context_includes_non_completion_attempt_failures() -> None
     assert context.attempt_failures == [
         "Fix-failing-tests tasks must include at least one edit step."
     ]
+    assert context.attempt_failure_codes == []
+
+
+def test_build_replan_context_collects_attempt_failure_codes() -> None:
+    attempt_result = AttemptResult(
+        attempt=1,
+        task="fix failing tests",
+        plan=Plan(summary="Planning failed.", steps=[]),
+        step_results=[],
+        success=False,
+        errors=[
+            ErrorContext(
+                error_type="PlanValidationError",
+                message="Fix-failing-tests tasks must include at least one edit step.",
+                failure_code="missing_edit_step",
+            ),
+            ErrorContext(
+                error_type="PlanValidationError",
+                message="Fix-failing-tests tasks must include at least one edit step.",
+                failure_code="missing_edit_step",
+            ),
+        ],
+    )
+
+    context = build_replan_context("fix failing tests", attempt_result)
+
+    assert context.attempt_failure_codes == ["missing_edit_step"]

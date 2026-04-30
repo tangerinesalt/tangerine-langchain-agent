@@ -3,6 +3,10 @@ import pytest
 from langchain_code_agent.agent.plan_validator import validate_plan, validate_task_specific_plan
 from langchain_code_agent.agent.planning_failures import PlanValidationError
 from langchain_code_agent.models.plan import CompletionCheck, Plan, PlanStep
+from langchain_code_agent.models.planning_context import (
+    FixFailingTestsPlanningContext,
+    PlanningContext,
+)
 
 
 def test_validate_plan_accepts_valid_steps() -> None:
@@ -153,6 +157,40 @@ def test_validate_task_specific_plan_rejects_fix_failing_tests_without_edit_step
 
     with pytest.raises(ValueError, match="must include at least one edit step"):
         validate_task_specific_plan(plan, task_text="Fix the failing tests in this workspace.")
+
+
+def test_validate_task_specific_plan_rejects_irrelevant_edit_when_context_has_candidates() -> None:
+    plan = Plan(
+        summary="Create unrelated file and test.",
+        steps=[
+            PlanStep(
+                action="write_file",
+                description="Write an unrelated marker.",
+                arguments={"path": "fixed.txt", "content": "ok"},
+            ),
+            PlanStep(
+                action="run_tests",
+                description="Run tests.",
+                arguments={},
+            ),
+        ],
+    )
+    planning_context = PlanningContext(
+        fix_failing_tests=FixFailingTestsPlanningContext(
+            test_command="python -m pytest -q",
+            run_tests_ok=False,
+            candidate_paths=["test_app.py", "app.py"],
+        )
+    )
+
+    with pytest.raises(PlanValidationError) as exc_info:
+        validate_task_specific_plan(
+            plan,
+            task_text="Fix the failing tests in this workspace.",
+            planning_context=planning_context,
+        )
+
+    assert exc_info.value.failure_code == "irrelevant_edit_step"
 
 
 def test_validate_task_specific_plan_detects_chinese_fix_tests_task() -> None:

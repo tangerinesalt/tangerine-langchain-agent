@@ -11,6 +11,16 @@ from langchain_code_agent.models.task import Task
 JsonRepairRule = Callable[[str], str]
 PlanNormalizationRule = Callable[[list[PlanStep], "PlanNormalizationContext"], list[PlanStep]]
 
+PATH_ARGUMENT_ACTIONS = {
+    "read_file",
+    "read_file_head",
+    "write_file",
+    "delete_file",
+    "replace_in_file",
+    "insert_text",
+}
+PATH_ARGUMENT_ALIASES = ("file", "filepath", "file_path")
+
 
 @dataclass(frozen=True, slots=True)
 class PlanNormalizationContext:
@@ -207,15 +217,11 @@ def _normalize_step(step: PlanStep, *, workspace_root: Path) -> PlanStep:
     arguments = dict(step.arguments)
     action = step.action
 
-    if "file" in arguments and "path" not in arguments and action in {
-        "read_file",
-        "read_file_head",
-        "write_file",
-        "delete_file",
-        "replace_in_file",
-        "insert_text",
-    }:
-        arguments["path"] = str(arguments.pop("file"))
+    if action in PATH_ARGUMENT_ACTIONS and "path" not in arguments:
+        for alias in PATH_ARGUMENT_ALIASES:
+            if alias in arguments:
+                arguments["path"] = str(arguments.pop(alias))
+                break
 
     if action == "find_files_by_name" and "query" in arguments and "name" not in arguments:
         arguments["name"] = str(arguments.pop("query"))
@@ -231,6 +237,17 @@ def _normalize_step(step: PlanStep, *, workspace_root: Path) -> PlanStep:
             arguments["new_text"] = str(arguments.pop("new_str"))
     if action == "run_tests" and "path" in arguments and "working_directory" not in arguments:
         arguments["working_directory"] = str(arguments.pop("path"))
+    if action == "run_tests":
+        for unsupported_name in (
+            "argv",
+            "cmd",
+            "command",
+            "code",
+            "expected_exit_code",
+            "expected_returncode",
+            "returncode",
+        ):
+            arguments.pop(unsupported_name, None)
     if action == "list_files" and "path" in arguments:
         normalized_path = _normalize_path(str(arguments["path"]), workspace_root)
         if normalized_path in {"", "."}:

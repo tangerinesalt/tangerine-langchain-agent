@@ -25,6 +25,7 @@ class ReplanContext:
     previous_plan_summary: str
     failed_steps: list[ReplanFailedStep] = field(default_factory=list)
     attempt_failures: list[str] = field(default_factory=list)
+    attempt_failure_codes: list[str] = field(default_factory=list)
     completion_failures: list[str] = field(default_factory=list)
     successful_actions: list[str] = field(default_factory=list)
     file_changes: list[str] = field(default_factory=list)

@@ -59,11 +59,17 @@ def test_classify_planning_exception_detects_provider_auth_and_config_errors() -
         RuntimeError("Missing API key for configured model profile."),
         stage="planner_call",
     )
+    openrouter_preset_failure = classify_planning_exception(
+        RuntimeError("'models' array must have 3 items or fewer."),
+        stage="planner_call",
+    )
 
     assert auth_failure.code == "provider_auth_error"
     assert auth_failure.origin == "model_service"
     assert config_failure.code == "provider_config_error"
     assert config_failure.origin == "model_service"
+    assert openrouter_preset_failure.code == "provider_config_error"
+    assert openrouter_preset_failure.origin == "model_service"
 
 
 def test_classify_planning_exception_falls_back_to_unknown_runtime() -> None:

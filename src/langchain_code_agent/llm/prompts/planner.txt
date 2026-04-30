@@ -20,6 +20,11 @@ Requirements:
 - Use write_file when the task requires creating or updating a text file in the workspace.
 - For replace_in_file, the only text replacement argument names are old_text and new_text.
   Never use old_str, new_str, find, replace, before, or after for replace_in_file.
+- When Planning context JSON is provided, treat it as deterministic local evidence gathered
+  before planning. Use it to choose relevant files and avoid restarting with inspection-only
+  steps when it already includes failing test output or candidate paths.
+- If Planning context JSON includes file_excerpts, use those excerpts to make concrete edits;
+  add read_file or read_file_head only when the excerpt is not enough.
 - When the task says tests are already failing, do not stop at inspection or a diagnostic
   run_tests step. Read the relevant files, include an edit step, and finish with a final
   verification step such as run_tests.
