@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
-from langchain_code_agent.agent.runner import AgentRunner
+from langchain_code_agent.agent.execution.runner import AgentRunner
 from langchain_code_agent.agent_config import AgentConfig
 from langchain_code_agent.evals.experience import archive_eval_suite
 from langchain_code_agent.evals.models import EvalReport

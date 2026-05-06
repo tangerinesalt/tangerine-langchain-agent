@@ -4,7 +4,8 @@ import re
 from pathlib import PurePosixPath
 
 from langchain_code_agent.actions import ActionRuntime
-from langchain_code_agent.agent.plan_validator import is_fix_failing_tests_task
+from langchain_code_agent.agent.planning.validator import is_fix_failing_tests_task
+from langchain_code_agent.common.text import excerpt_text
 from langchain_code_agent.models.planning_context import (
     FixFailingTestsPlanningContext,
     PlanningContext,
@@ -78,12 +79,7 @@ def _combine_output(stdout: str, stderr: str) -> str:
 
 
 def _excerpt_output(output: str) -> str | None:
-    stripped = output.strip()
-    if not stripped:
-        return None
-    if len(stripped) <= MAX_FAILURE_EXCERPT_CHARS:
-        return stripped
-    return stripped[:MAX_FAILURE_EXCERPT_CHARS].rstrip() + "\n...[truncated]"
+    return excerpt_text(output, max_chars=MAX_FAILURE_EXCERPT_CHARS)
 
 
 def _build_file_excerpts(

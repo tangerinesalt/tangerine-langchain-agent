@@ -1,7 +1,10 @@
 import pytest
 
-from langchain_code_agent.agent.plan_validator import validate_plan, validate_task_specific_plan
-from langchain_code_agent.agent.planning_failures import PlanValidationError
+from langchain_code_agent.agent.planning.failures import PlanValidationError
+from langchain_code_agent.agent.planning.validator import (
+    validate_plan,
+    validate_task_specific_plan,
+)
 from langchain_code_agent.models.plan import CompletionCheck, Plan, PlanStep
 from langchain_code_agent.models.planning_context import (
     FixFailingTestsPlanningContext,

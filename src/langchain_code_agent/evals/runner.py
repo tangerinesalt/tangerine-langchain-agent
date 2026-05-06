@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
-from langchain_code_agent.agent.runner import AgentRunner
+from langchain_code_agent.agent.execution.runner import AgentRunner
 from langchain_code_agent.agent_config import AgentConfig
 from langchain_code_agent.evals.models import (
     EvalCase,

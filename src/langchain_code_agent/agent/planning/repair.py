@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from langchain_code_agent.agent.plan_validator import (
-    MUTATING_ACTIONS,
-    is_fix_failing_tests_task,
-)
-from langchain_code_agent.agent.planning_failures import (
+from langchain_code_agent.agent.planning.failures import (
     MISSING_VALIDATION_STEP,
     VALIDATION_BEFORE_EDIT,
     PlanningFailureCode,
+)
+from langchain_code_agent.agent.planning.validator import (
+    MUTATING_ACTIONS,
+    is_fix_failing_tests_task,
 )
 from langchain_code_agent.models.plan import Plan, PlanStep
 

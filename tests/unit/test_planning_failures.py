@@ -1,4 +1,4 @@
-from langchain_code_agent.agent.planning_failures import (
+from langchain_code_agent.agent.planning.failures import (
     PlanValidationError,
     classify_planning_exception,
 )

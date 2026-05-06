@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 
+from langchain_code_agent.common.paths import normalize_relative_path
 from langchain_code_agent.models.plan import CompletionCheck, Plan, PlanStep
 from langchain_code_agent.models.result import ErrorContext, FileChange, RunResult
 
@@ -210,7 +211,7 @@ def _all_file_changes(run_result: RunResult) -> Iterator[FileChange]:
 
 
 def _normalize_path(path: str) -> str:
-    return path.replace("\\", "/").lstrip("./")
+    return normalize_relative_path(path)
 
 
 def _failure_message(check: CompletionCheck) -> str:

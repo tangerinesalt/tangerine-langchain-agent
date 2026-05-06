@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from pathlib import PurePosixPath
-
 from langchain_code_agent.actions import get_action_spec, validate_action_arguments
-from langchain_code_agent.agent.planning_failures import (
+from langchain_code_agent.agent.planning.failures import (
     INVALID_ACTION,
     INVALID_ACTION_ARGUMENTS,
     IRRELEVANT_EDIT_STEP,
@@ -14,6 +12,7 @@ from langchain_code_agent.agent.planning_failures import (
     VALIDATION_BEFORE_EDIT,
     PlanValidationError,
 )
+from langchain_code_agent.common.paths import normalize_relative_path
 from langchain_code_agent.models.plan import CompletionCheck, Plan
 from langchain_code_agent.models.planning_context import PlanningContext
 
@@ -274,7 +273,7 @@ def _validate_plan_semantics(plan: Plan, *, existing_paths: set[str]) -> None:
 
 
 def _normalize_path(path: str) -> str:
-    return PurePosixPath(path.replace("\\", "/")).as_posix().lstrip("./")
+    return normalize_relative_path(path)
 
 
 def is_fix_failing_tests_task(task_text: str) -> bool:

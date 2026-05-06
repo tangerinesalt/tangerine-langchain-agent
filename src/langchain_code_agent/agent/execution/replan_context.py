@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from langchain_code_agent.common.text import excerpt_text
 from langchain_code_agent.models.replan import ReplanContext, ReplanFailedStep
 from langchain_code_agent.models.result import AttemptResult
 
@@ -59,11 +60,4 @@ def build_replan_context(original_task: str, attempt_result: AttemptResult) -> R
 
 
 def _excerpt_output(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    stripped = value.strip()
-    if not stripped:
-        return None
-    if len(stripped) <= MAX_REPLAN_OUTPUT_CHARS:
-        return stripped
-    return stripped[:MAX_REPLAN_OUTPUT_CHARS].rstrip() + "\n...[truncated]"
+    return excerpt_text(value, max_chars=MAX_REPLAN_OUTPUT_CHARS)

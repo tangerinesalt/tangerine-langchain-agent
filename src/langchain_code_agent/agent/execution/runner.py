@@ -1,33 +1,38 @@
 from __future__ import annotations
 
-import json
 import logging
 import time
 import traceback
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from langchain_code_agent.actions import ActionRuntime
-from langchain_code_agent.agent.completion_validator import validate_completion
-from langchain_code_agent.agent.plan_normalization_rules import apply_plan_normalization_rules
-from langchain_code_agent.agent.plan_repair import PlanRepairResult, repair_plan
-from langchain_code_agent.agent.plan_validator import validate_plan, validate_task_specific_plan
-from langchain_code_agent.agent.planner import build_planner
-from langchain_code_agent.agent.planning_context_builder import build_planning_context
-from langchain_code_agent.agent.planning_failures import (
-    PlannerRevisionError,
-    classify_planning_exception,
+from langchain_code_agent.agent.execution.completion_validator import validate_completion
+from langchain_code_agent.agent.execution.file_changes import diff_file_states
+from langchain_code_agent.agent.execution.replan_context import build_replan_context
+from langchain_code_agent.agent.execution.run_artifacts import (
+    elapsed_ms,
+    run_artifact_path,
+    write_run_artifact,
 )
-from langchain_code_agent.agent.replan_context import build_replan_context
-from langchain_code_agent.agent.run_reporter import (
+from langchain_code_agent.agent.execution.run_reporter import (
     RunReporter,
     build_final_report,
     extract_shell_output,
     summarize_tool_data,
 )
-from langchain_code_agent.agent.step_executor import StepExecutor
+from langchain_code_agent.agent.execution.step_executor import StepExecutor
+from langchain_code_agent.agent.execution.task_input import build_task_input
+from langchain_code_agent.agent.planning.attempt import validate_or_repair_task_specific_plan
+from langchain_code_agent.agent.planning.context_builder import build_planning_context
+from langchain_code_agent.agent.planning.failures import (
+    PlannerRevisionError,
+    classify_planning_exception,
+)
+from langchain_code_agent.agent.planning.normalization_rules import apply_plan_normalization_rules
+from langchain_code_agent.agent.planning.planner import build_planner
+from langchain_code_agent.agent.planning.validator import validate_plan
 from langchain_code_agent.agent_config import AgentConfig
 from langchain_code_agent.models.plan import Plan
 from langchain_code_agent.models.planning_context import PlanningContext
@@ -35,7 +40,6 @@ from langchain_code_agent.models.replan import ReplanContext
 from langchain_code_agent.models.result import (
     AttemptResult,
     ErrorContext,
-    FileChange,
     FinalReport,
     RunEvent,
     RunResult,
@@ -128,7 +132,7 @@ class AgentRunner:
                 run_id=run_id,
                 run_started_at=run_started_at,
             )
-            attempt_duration_ms = _elapsed_ms(attempt_started)
+            attempt_duration_ms = elapsed_ms(attempt_started)
             attempts.append(
                 _attempt_result_from_run_result(
                     final_result,
@@ -173,7 +177,7 @@ class AgentRunner:
         final_result.started_at = run_started_at
         final_result.attempts = attempts
         final_result.selected_attempt = attempts[-1].attempt if attempts else None
-        final_result.final_report.task_input = _task_input(
+        final_result.final_report.task_input = build_task_input(
             Task(
                 goal=task_text,
                 workspace_root=self.config.workspace_root,
@@ -181,9 +185,9 @@ class AgentRunner:
             ),
             self.config.planner_backend,
         )
-        run_duration_ms = _elapsed_ms(run_started)
+        run_duration_ms = elapsed_ms(run_started)
         completed_at = datetime.now(UTC).isoformat()
-        artifact_path = _run_artifact_path(self.config.workspace_root, run_id)
+        artifact_path = run_artifact_path(self.config.workspace_root, run_id)
         final_result.completed_at = completed_at
         final_result.duration_ms = run_duration_ms
         final_result.artifact_path = str(artifact_path)
@@ -204,7 +208,7 @@ class AgentRunner:
                 "artifact_path": str(artifact_path),
             },
         )
-        _write_run_artifact(final_result, artifact_path)
+        write_run_artifact(final_result, artifact_path)
         return final_result
 
     def _run_single_attempt(
@@ -240,7 +244,7 @@ class AgentRunner:
             planning_stage = "validate_plan"
             plan = validate_plan(plan, existing_paths=set(self.repository.snapshot_file_state()))
             planning_stage = "validate_task_specific_plan"
-            plan, repair_result, revised_failure = _validate_or_repair_task_specific_plan(
+            plan, repair_result, revised_failure = validate_or_repair_task_specific_plan(
                 plan,
                 planner=self.planner,
                 task=task,
@@ -248,7 +252,7 @@ class AgentRunner:
                 existing_paths=set(self.repository.snapshot_file_state()),
             )
         except Exception as exc:
-            planning_duration_ms = _elapsed_ms(planning_started)
+            planning_duration_ms = elapsed_ms(planning_started)
             error_stage = (
                 "planner_revision_call"
                 if isinstance(exc, PlannerRevisionError)
@@ -293,7 +297,7 @@ class AgentRunner:
                 final_report=FinalReport(
                     success=False,
                     run_id=run_id,
-                    task_input=_task_input(task, self.config.planner_backend),
+                    task_input=build_task_input(task, self.config.planner_backend),
                     plan_summary="Planning failed before any step was created.",
                     total_steps=0,
                     successful_steps=0,
@@ -306,13 +310,13 @@ class AgentRunner:
             )
             failed_result.final_report = build_final_report(
                 failed_result,
-                task_input=_task_input(task, self.config.planner_backend),
+                task_input=build_task_input(task, self.config.planner_backend),
                 extra_errors=[planning_error_context],
             )
             failed_result.final_report.attempts = attempt
             return failed_result
 
-        planning_duration_ms = _elapsed_ms(planning_started)
+        planning_duration_ms = elapsed_ms(planning_started)
         if revised_failure is not None:
             self.reporter.record_event(
                 events,
@@ -350,6 +354,61 @@ class AgentRunner:
                 "validated_plan": plan.to_dict(),
             },
         )
+        results = self._execute_plan_steps(
+            plan,
+            execution_mode=execution_mode,
+            events=events,
+            attempt=attempt,
+        )
+        run_result = RunResult(
+            task=task.goal,
+            workspace_root=str(task.workspace_root),
+            execution_mode=task.execution_mode,
+            planner=self.config.planner_backend,
+            plan=plan,
+            events=events,
+            step_results=results,
+            final_report=FinalReport(
+                success=False,
+                run_id=run_id,
+                task_input=build_task_input(task, self.config.planner_backend),
+                plan_summary=plan.summary,
+                total_steps=0,
+                successful_steps=0,
+                failed_steps=0,
+                planned_steps=0,
+                attempts=attempt,
+            ),
+            run_id=run_id,
+            started_at=run_started_at,
+        )
+        run_result.final_report = build_final_report(run_result)
+        run_result.final_report.attempts = attempt
+        completion_errors = validate_completion(run_result)
+        if completion_errors:
+            run_result.final_report.errors.extend(completion_errors)
+            run_result.final_report.success = False
+            self.reporter.record_event(
+                events,
+                event_type="completion_validation_failed",
+                level="ERROR",
+                message="Run finished without the expected material output.",
+                details={
+                    "attempt": attempt,
+                    "errors": [error.to_dict() for error in completion_errors],
+                },
+                error_context=completion_errors[0],
+            )
+        return run_result
+
+    def _execute_plan_steps(
+        self,
+        plan: Plan,
+        *,
+        execution_mode: str,
+        events: list[RunEvent],
+        attempt: int,
+    ) -> list[StepExecutionResult]:
         results: list[StepExecutionResult] = []
         for index, step in enumerate(plan.steps, start=1):
             self.reporter.record_event(
@@ -395,7 +454,7 @@ class AgentRunner:
                 index,
             )
             after_state = self.repository.snapshot_file_state()
-            file_changes = _diff_file_states(before_state, after_state)
+            file_changes = diff_file_states(before_state, after_state)
             if file_changes:
                 self.reporter.record_event(
                     events,
@@ -409,7 +468,7 @@ class AgentRunner:
                         "file_changes": [change.to_dict() for change in file_changes],
                     },
                 )
-            step_duration_ms = _elapsed_ms(step_started)
+            step_duration_ms = elapsed_ms(step_started)
             results.append(
                 StepExecutionResult(
                     attempt=attempt,
@@ -467,152 +526,11 @@ class AgentRunner:
                 details={"attempt": attempt, "ok": tool_result.ok},
                 error_context=error_context,
             )
-        run_result = RunResult(
-            task=task.goal,
-            workspace_root=str(task.workspace_root),
-            execution_mode=task.execution_mode,
-            planner=self.config.planner_backend,
-            plan=plan,
-            events=events,
-            step_results=results,
-            final_report=FinalReport(
-                success=False,
-                run_id=run_id,
-                task_input=_task_input(task, self.config.planner_backend),
-                plan_summary=plan.summary,
-                total_steps=0,
-                successful_steps=0,
-                failed_steps=0,
-                planned_steps=0,
-                attempts=attempt,
-            ),
-            run_id=run_id,
-            started_at=run_started_at,
-        )
-        run_result.final_report = build_final_report(run_result)
-        run_result.final_report.attempts = attempt
-        completion_errors = validate_completion(run_result)
-        if completion_errors:
-            run_result.final_report.errors.extend(completion_errors)
-            run_result.final_report.success = False
-            self.reporter.record_event(
-                events,
-                event_type="completion_validation_failed",
-                level="ERROR",
-                message="Run finished without the expected material output.",
-                details={
-                    "attempt": attempt,
-                    "errors": [error.to_dict() for error in completion_errors],
-                },
-                error_context=completion_errors[0],
-            )
-        return run_result
-
-
-def _diff_file_states(
-    before: dict[str, dict[str, int]],
-    after: dict[str, dict[str, int]],
-) -> list[FileChange]:
-    changes: list[FileChange] = []
-    for path in sorted(set(before) | set(after)):
-        before_state = before.get(path)
-        after_state = after.get(path)
-        if before_state is None and after_state is not None:
-            changes.append(FileChange(path=path, change_type="added", after=after_state))
-        elif before_state is not None and after_state is None:
-            changes.append(FileChange(path=path, change_type="deleted", before=before_state))
-        elif before_state != after_state and before_state is not None and after_state is not None:
-            changes.append(
-                FileChange(
-                    path=path,
-                    change_type="modified",
-                    before=before_state,
-                    after=after_state,
-                )
-            )
-    return changes
-
-
-def _task_input(task: Task, planner_backend: str) -> dict[str, Any]:
-    return {
-        "task": task.goal,
-        "workspace_root": str(task.workspace_root),
-        "execution_mode": task.execution_mode,
-        "planner_backend": planner_backend,
-    }
+        return results
 
 
 def _fallback_plan() -> Plan:
     return Plan(summary="Planning failed.", steps=[])
-
-
-def _validate_or_repair_task_specific_plan(
-    plan: Plan,
-    *,
-    planner: Any,
-    task: Task,
-    task_text: str,
-    existing_paths: set[str],
-) -> tuple[Plan, PlanRepairResult | None, dict[str, str] | None]:
-    try:
-        return (
-            validate_task_specific_plan(
-                plan,
-                task_text=task_text,
-                planning_context=task.planning_context,
-            ),
-            None,
-            None,
-        )
-    except Exception as exc:
-        planning_failure = classify_planning_exception(
-            exc,
-            stage="validate_task_specific_plan",
-        )
-        if planning_failure.code == "missing_edit_step":
-            try:
-                revised_plan = planner.revise_plan(
-                    task,
-                    invalid_plan=plan,
-                    failure_code=planning_failure.code,
-                    failure_message=str(exc),
-                )
-            except Exception as revision_exc:
-                raise PlannerRevisionError(revision_exc) from revision_exc
-            revised_plan = apply_plan_normalization_rules(
-                revised_plan,
-                task=task,
-                workspace_root=task.workspace_root,
-            )
-            revised_plan = validate_plan(revised_plan, existing_paths=existing_paths)
-            revised_plan = validate_task_specific_plan(
-                revised_plan,
-                task_text=task_text,
-                planning_context=task.planning_context,
-            )
-            return (
-                revised_plan,
-                None,
-                {
-                    "failure_code": planning_failure.code,
-                    "failure_message": str(exc),
-                },
-            )
-        repair_result = repair_plan(
-            plan,
-            task_text=task_text,
-            failure_code=planning_failure.code,
-        )
-        if repair_result is None:
-            raise
-
-        repaired_plan = validate_plan(repair_result.plan, existing_paths=existing_paths)
-        repaired_plan = validate_task_specific_plan(
-            repaired_plan,
-            task_text=task_text,
-            planning_context=task.planning_context,
-        )
-        return repaired_plan, repair_result, None
 
 
 def _attempt_result_from_run_result(
@@ -635,20 +553,4 @@ def _attempt_result_from_run_result(
         errors=list(run_result.final_report.errors),
         completion_errors=completion_errors,
         duration_ms=duration_ms,
-    )
-
-
-def _elapsed_ms(started: float) -> int:
-    return int((time.perf_counter() - started) * 1000)
-
-
-def _run_artifact_path(workspace_root: Path, run_id: str) -> Path:
-    return workspace_root / ".lca" / "runs" / run_id / "result.json"
-
-
-def _write_run_artifact(result: RunResult, path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(result.to_dict(), ensure_ascii=False, indent=2),
-        encoding="utf-8",
     )

@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from langchain_code_agent.agent.plan_normalization_rules import (
+from langchain_code_agent.agent.planning.normalization_rules import (
     apply_json_text_repairs,
     apply_plan_normalization_rules,
 )

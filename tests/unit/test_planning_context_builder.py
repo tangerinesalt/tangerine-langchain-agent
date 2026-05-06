@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from langchain_code_agent.actions import ActionRuntime
-from langchain_code_agent.agent.planning_context_builder import build_planning_context
+from langchain_code_agent.agent.planning.context_builder import build_planning_context
 from langchain_code_agent.workspace.repository import Repository
 
 

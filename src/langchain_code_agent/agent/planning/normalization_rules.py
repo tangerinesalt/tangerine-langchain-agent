@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from textwrap import indent
 
+from langchain_code_agent.common.paths import normalize_workspace_relative_path
 from langchain_code_agent.models.plan import Plan, PlanStep
 from langchain_code_agent.models.task import Task
 
@@ -317,24 +318,7 @@ def _extract_python_c_script(command: str) -> str | None:
 
 
 def _normalize_path(raw_path: str, workspace_root: Path) -> str:
-    normalized = raw_path.strip().replace("\\", "/")
-    if not normalized:
-        return normalized
-
-    try:
-        candidate = Path(normalized)
-        if candidate.is_absolute():
-            return candidate.resolve().relative_to(workspace_root.resolve()).as_posix()
-    except Exception:
-        pass
-
-    parts = [part for part in normalized.split("/") if part not in {"", "."}]
-    if workspace_root.name in parts:
-        anchor = parts.index(workspace_root.name)
-        remainder = parts[anchor + 1 :]
-        if remainder:
-            return "/".join(remainder)
-    return "/".join(parts)
+    return normalize_workspace_relative_path(raw_path, workspace_root)
 
 
 def _wrap_script_with_output_writer(script: str, output_path: str) -> str:

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from langchain_code_agent.agent.completion_validator import (
+from langchain_code_agent.agent.execution.completion_validator import (
     derive_completion_checks,
     validate_completion,
 )
