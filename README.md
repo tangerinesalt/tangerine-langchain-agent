@@ -12,12 +12,16 @@
 
 ```text
 src/langchain_code_agent/
-  agent/              planner、runner、reporter、validator
+  agent/
+    planning/         planner、normalizer、validator、repair
+    execution/        runner、step executor、reporter、completion validator
+  action_registry/    action 规格、参数校验、执行分发
   llm/                模型适配与 planner prompt
   models/             Plan / Task / Result 等结构模型
   tools/              文件、shell、测试等本地工具
   workspace/          工作空间与仓库访问边界
-  actions.py          action 注册中心
+  common/             路径与文本等通用辅助函数
+  actions.py          action registry 兼容入口
   agent_config.py     代理运行配置入口
   model_resolution.py 全局模型配置与 auth 解析
   cli.py              CLI 入口
@@ -247,15 +251,3 @@ lc-agent eval archive --project-root C:\Users\tangerine\.langchain-code-agent --
 - 运维手册：[docs/runbook.md](./docs/runbook.md)
 - 已知限制与后续建议：[docs/limitations.md](./docs/limitations.md)
 - LangChain 对齐说明：[docs/langchain-alignment.md](./docs/langchain-alignment.md)
-l
-python -m pytest
-python -m ruff check .
-python -m mypy src
-```
-# tangerine-langchain-agent
-l
-python -m pytest
-python -m ruff check .
-python -m mypy src
-```
-# tangerine-langchain-agent
